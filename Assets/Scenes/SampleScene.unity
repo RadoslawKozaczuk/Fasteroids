@@ -307,7 +307,7 @@ GameObject:
   - component: {fileID: 528744136}
   - component: {fileID: 528744135}
   m_Layer: 0
-  m_Name: GameEngine
+  m_Name: Game Engine
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -786,7 +786,7 @@ GameObject:
   - component: {fileID: 1994410511}
   - component: {fileID: 1994410510}
   m_Layer: 5
-  m_Name: Game UI
+  m_Name: User Interface
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
