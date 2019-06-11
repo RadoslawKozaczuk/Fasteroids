@@ -1,10 +1,21 @@
 ﻿using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.UI;
 
 public class GameEngine : MonoBehaviour
 {
+    [StructLayout(LayoutKind.Explicit)]
+    struct FloatIntUnion
+    {
+        [FieldOffset(0)]
+        public float f;
+
+        [FieldOffset(0)]
+        public int tmp;
+    }
+
     #region Constants
     const float AsteroidRadius = 0.20f;
     const float AsteroidRadius2 = AsteroidRadius + AsteroidRadius;
@@ -128,9 +139,10 @@ public class GameEngine : MonoBehaviour
             - and most importantly in some cases I could get rid of passing items by value
                 and instead we just pass its index in the table - the reduces greatly the number of the struct copying
      
-        All in all improvements above gave me 0.5 ms shorter sorting time. 
+        All in all improvements above gave me 0.5 ms shorter sorting time (measured in the editor). 
     */
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     int FloorLog2(int n)
     {
         int num = 0;
@@ -313,13 +325,6 @@ public class GameEngine : MonoBehaviour
 
                 continue;
             }
-            else if (a.Flags == 1)
-            {
-                // the asteroid was destroyed in the previous frame
-                a.Flags = 2; // set it's flag to 2 (destroyed and waiting for respawn)
-                a.TimeLeftToRespawn = 1f;
-                continue;
-            }
 
             a.TimeLeftToRespawn -= deltaTime;
             if (a.TimeLeftToRespawn <= 0)
@@ -417,7 +422,7 @@ public class GameEngine : MonoBehaviour
         {
             _timeToFireNextLaser = 0.5f;
             _laserDestructionFlags[_laserNextFreeIndex] = false;
-            _laserCachedPositions[_laserNextFreeIndex] = _playerCachedPosition;
+            _laserCachedPositions[_laserNextFreeIndex] = _playerCachedPosition + _playerTransform.up * 0.3f;
             _laserPool[_laserNextFreeIndex].transform.rotation = _playerTransform.rotation;
 
             if (++_laserNextFreeIndex > LaserPoolSize - 1)
@@ -444,7 +449,7 @@ public class GameEngine : MonoBehaviour
                 continue; // b is too far on x axis
 
             // a is destroyed
-            if (a.Flags > 0)
+            if (a.Flags == 1)
                 continue;
 
             // check for other asteroids
@@ -464,7 +469,7 @@ public class GameEngine : MonoBehaviour
                 }
 
                 // b is destroyed
-                if (b.Flags > 0)
+                if (b.Flags == 1)
                 {
                     b = ref _asteroids[++indexB];
                     difX = b.Position.x - a.Position.x;
@@ -473,12 +478,17 @@ public class GameEngine : MonoBehaviour
                     continue;
                 }
 
-                float distance = Mathf.Sqrt(difX * difX + difY * difY);
+                // FastSqrt offers better performance for slightly less accurate results
+                // additionally we perform manual power^2 instead of call to the function 
+                // provided because again it is faster this way
+                float distance = FastSqrt(difX * difX + difY * difY);
                 if (distance < AsteroidRadius2)
                 {
                     // collision! mark both as destroyed in this frame and break the loop
-                    a.Flags = 1; // destroyed in this frame
-                    b.Flags = 1; // destroyed in this frame
+                    a.Flags = 1; // destroyed
+                    b.Flags = 1; // destroyed
+                    a.TimeLeftToRespawn = 1f;
+                    b.TimeLeftToRespawn = 1f;
                     ++indexA; // increase by one here and again in the for loop
                     break;
                 }
@@ -518,7 +528,7 @@ public class GameEngine : MonoBehaviour
             ref Asteroid a = ref _asteroids[i];
 
             // omit destroyed
-            if (a.Flags > 0)
+            if (a.Flags == 1)
                 continue;
 
             if (a.Position.x < lowestX)
@@ -544,15 +554,14 @@ public class GameEngine : MonoBehaviour
             }
 
             // check asteroid collision with lasers first
-            int j = 0;
             float distance;
-            for (; j < LaserPoolSize; j++)
+            for (int j = 0; j < LaserPoolSize; j++)
             {
                 if (_laserDestructionFlags[j])
                     continue;
 
                 // calculate the distance between the asteroid and the laser
-                distance = Mathf.Sqrt(
+                distance = FastSqrt(
                     (_laserCachedPositions[j].x - a.Position.x) * (_laserCachedPositions[j].x - a.Position.x)
                     + (_laserCachedPositions[j].y - a.Position.y) * (_laserCachedPositions[j].y - a.Position.y));
 
@@ -562,21 +571,21 @@ public class GameEngine : MonoBehaviour
                     UpdateScore();
                     _laserDestructionFlags[j] = true;
                     _laserCachedPositions[j] = _objectGraveyardPosition;
-                    a.Flags = 1; // destroyed in this frame
-                    j++; // so it is the same as it would be without break
+                    a.Flags = 1; // destroyed
+                    a.TimeLeftToRespawn = 1f;
                     break;
                 }
             }
 
             // asteroid destroyed in the loop above
-            if (_laserDestructionFlags[--j]) // decrement as the loop above will leave it one higher than needed
+            if (a.Flags == 1)
                 continue;
 
             if (_playerDestroyed)
                 continue;
 
             // check collision with the player
-            distance = Mathf.Sqrt(
+            distance = FastSqrt(
                 (_playerCachedPosition.x - a.Position.x) * (_playerCachedPosition.x - a.Position.x)
                 + (_playerCachedPosition.y - a.Position.y) * (_playerCachedPosition.y - a.Position.y));
 
@@ -610,7 +619,10 @@ public class GameEngine : MonoBehaviour
         _playerTransform.rotation = new Quaternion(0, 0, 0, 0);
 
         for (int i = 0; i < LaserPoolSize; i++)
+        {
             _laserDestructionFlags[i] = true;
+            _laserCachedPositions[i] = _objectGraveyardPosition;
+        }
 
         _playerDestroyed = false;
         _restartButton.gameObject.SetActive(false);
@@ -627,7 +639,7 @@ public class GameEngine : MonoBehaviour
         {
             ref Asteroid a = ref _asteroids[i];
 
-            if (a.Flags > 0)
+            if (a.Flags == 1)
                 continue;
 
             // is visible in x?
@@ -707,7 +719,7 @@ public class GameEngine : MonoBehaviour
         {
             _laserPool[i] = Instantiate(_laserBeamPrefab.gameObject);
             _laserPool[i].transform.position = _objectGraveyardPosition;
-            _laserCachedPositions[i] = Vector3.zero;
+            _laserCachedPositions[i] = _objectGraveyardPosition;
         }
     }
 
@@ -730,6 +742,24 @@ public class GameEngine : MonoBehaviour
     }
     #endregion
 
+    // not written by me, I found it on the Internet
+    // it is around 10 - 15% faster than the Mathf.Sqrt from Unity.Mathematics 
+    // (which probably uses the inverse square root method from Quake 3 based on its cost).
+    // but that comes for a cost of less accurate approximation (from 0.5% to 5% less accurate)
+    float FastSqrt(float number)
+    {
+        if (number == 0)
+            return 0;
+
+        FloatIntUnion u;
+        u.tmp = 0;
+        u.f = number;
+        u.tmp -= 1 << 23; /* Subtract 2^m. */
+        u.tmp >>= 1; /* Divide by 2. */
+        u.tmp += 1 << 29; /* Add ((b + 1) / 2) * 2^m. */
+        return u.f;
+    }
+
     /// <summary>
     /// Simple test method to test if the array is sorted properly.
     /// Useful for potentially dangerous sorting optimizations.
@@ -739,7 +769,7 @@ public class GameEngine : MonoBehaviour
         for (int i = 0; i < TotalNumberOfAsteroids - 1; i++)
             if (_asteroids[i].Position.x > _asteroids[i + 1].Position.x)
             {
-                UnityEngine.Debug.LogError("The sorting algorithm is invalid");
+                Debug.LogError("The sorting algorithm is invalid");
                 return false;
             }
 
