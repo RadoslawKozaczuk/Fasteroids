@@ -25,9 +25,9 @@ public class QuadTreeNode
     readonly float _divisionLineX, _divisionLineY;
     readonly QuadTreeNode _rootQuadNode;
     readonly int[] _movableTable;
-    int[] _permanentTable;
     readonly Quad _boundaries;
     readonly int _currentDepth;
+    int[] _permanentTable;
     bool _subDivisionsCreated;
     int _movableElementsCounter;
     int _permanentElementsCounter;
@@ -48,9 +48,7 @@ public class QuadTreeNode
     public void Add(int agentId)
     {
         // first check if the element can not be put in subdivision due to its proximity to the division lines
-        if (TooCloseToDivisionalLines(
-            GameEngine.Agents[agentId].Position.x,
-            GameEngine.Agents[agentId].Position.y))
+        if (TooCloseToDivisionalLines(GameEngine.Agents[agentId].Position.x, GameEngine.Agents[agentId].Position.y))
         {
             // add to perma list
             _permanentTable[_permanentElementsCounter++] = agentId;
@@ -58,17 +56,13 @@ public class QuadTreeNode
             // resize the table
             if (_permanentElementsCounter == _permanentTable.Length)
             {
-                // rozszerz tablice 2 krotnie
-                int[] tempTable = new int[_permanentTable.Length];
-                for (int i = 0; i < _permanentElementsCounter; i++)
-                    tempTable[i] = _permanentTable[i];
+                int[] tempTable = new int[_permanentElementsCounter];
+                Buffer.BlockCopy(_permanentTable, 0, tempTable, 0, _permanentElementsCounter * 4);
 
-                _permanentTable = new int[_permanentTable.Length * 2];
-                for (int i = 0; i < _permanentElementsCounter; i++)
-                    _permanentTable[i] = tempTable[i];
+                _permanentTable = new int[_permanentElementsCounter * 2];
+                Buffer.BlockCopy(tempTable, 0, _permanentTable, 0, _permanentElementsCounter * 4);
             }
 
-            //Debug.Log($"Depth={_currentDepth}, added id={agentId} to perm, this perm size={_permanentElementsCounter}");
             return;
         }
 
@@ -83,7 +77,6 @@ public class QuadTreeNode
         if (_movableElementsCounter < _root.MaxEntitiesPerQuad)
         {
             _movableTable[_movableElementsCounter++] = agentId;
-            //Debug.Log($"Depth={_currentDepth}, added id={agentId} to mova, this mova size={_movableElementsCounter}");
 
             return; // agent added to this quad
         }
@@ -241,13 +234,11 @@ public class QuadTreeNode
                 if (_permanentElementsCounter == _permanentTable.Length)
                 {
                     // extend the table two times
-                    int[] tempTable = new int[_permanentTable.Length];
-                    for (int j = 0; j < _permanentElementsCounter; j++)
-                        tempTable[j] = _permanentTable[j];
+                    int[] tempTable = new int[_permanentElementsCounter];
+                    Buffer.BlockCopy(_permanentTable, 0, tempTable, 0, _permanentElementsCounter * 4);
 
-                    _permanentTable = new int[_permanentTable.Length * 2];
-                    for (int j = 0; j < _permanentElementsCounter; j++)
-                        _permanentTable[j] = tempTable[j];
+                    _permanentTable = new int[_permanentElementsCounter * 2];
+                    Buffer.BlockCopy(tempTable, 0, _permanentTable, 0, _permanentElementsCounter * 4);
                 }
 
                 // if this is the last one simply decrease the counter
@@ -337,6 +328,35 @@ public class QuadTreeNode
             TopRightQuadrant.RemoveDeadElements();
             BottomLeftQuadrant.RemoveDeadElements();
             BottomRightQuadrant.RemoveDeadElements();
+        }
+    }
+
+    public void RemoveDeadElementsOnlyThisNode()
+    {
+        int i = 0;
+        while (i < _permanentElementsCounter)
+        {
+            if (GameEngine.Agents[_permanentTable[i]].Flags > 2) // dead
+            {
+                // remove from the tree structure
+                if (i < --_permanentElementsCounter)
+                    _permanentTable[i] = _permanentTable[_permanentElementsCounter];
+                continue;
+            }
+            i++;
+        }
+
+        i = 0;
+        while (i < _movableElementsCounter)
+        {
+            if (GameEngine.Agents[_movableTable[i]].Flags > 2) // dead
+            {
+                // remove from the tree structure
+                if (i < --_movableElementsCounter)
+                    _movableTable[i] = _movableTable[_movableElementsCounter];
+                continue;
+            }
+            i++;
         }
     }
 

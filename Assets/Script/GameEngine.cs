@@ -35,10 +35,10 @@ public class GameEngine : MonoBehaviour
     const float FrustumSizeY = 2.3f;
     #endregion
 
-    public static Agent[] Agents = new Agent[1 + 6 + TotalNumberOfAsteroids]; // player + total number of lasers
+    public static readonly Agent[] Agents = new Agent[1 + 6 + TotalNumberOfAsteroids]; // player + total number of lasers
 
     // this is where unused object goes upon death
-    public static readonly Vector3 ObjectGraveyardPosition = new Vector3(-10, -10, 0.3f);
+    public static readonly Vector3 ObjectGraveyardPosition = new Vector3(-999, -999, 0.3f);
     public static int NumberOfAsteroidsDestroyedThisFrame;
     public static bool DidPlayerDiedThisFrame;
 
@@ -68,6 +68,7 @@ public class GameEngine : MonoBehaviour
     int _laserNextFreeIndex;
     int _playerScore = 0;
     bool _playerDestroyed;
+    int _asteroidPoolLastUsedObjectId;
     #endregion
 
     void Start()
@@ -101,13 +102,12 @@ public class GameEngine : MonoBehaviour
     }
 
     // test related
-    //System.Diagnostics.Stopwatch swUpdate = new System.Diagnostics.Stopwatch();
-    //System.Diagnostics.Stopwatch swUpdateTree = new System.Diagnostics.Stopwatch();
-    //System.Diagnostics.Stopwatch swSort = new System.Diagnostics.Stopwatch();
-    //System.Diagnostics.Stopwatch swCollisions = new System.Diagnostics.Stopwatch();
-    //System.Diagnostics.Stopwatch swVisible = new System.Diagnostics.Stopwatch();
-    //long framesPassed = 0;
-    bool TestFlag = false;
+    //System.Diagnostics.Stopwatch _swUpdate = new System.Diagnostics.Stopwatch();
+    //System.Diagnostics.Stopwatch _swUpdateTree = new System.Diagnostics.Stopwatch();
+    //System.Diagnostics.Stopwatch _swCollisions = new System.Diagnostics.Stopwatch();
+    //System.Diagnostics.Stopwatch _swVisible = new System.Diagnostics.Stopwatch();
+    //long _framesPassed = 0;
+    bool _testFlag = false;
 
     void Update()
     {
@@ -124,48 +124,101 @@ public class GameEngine : MonoBehaviour
         HandleInput();
 
         #region Production Code
-        UpdateAsteroids(); // this also reinserts newly spawned asteroids
-        UpdateLasers(); // this also reinserts newly spawned laser beams
+        UpdateAsteroids(); // this also reinserts newly spawned asteroids into the quedtree
+        UpdateLasers(); // this also reinserts newly spawned laser beams into the quadtree
         _collisionSystem.UpdateTreeStructure(); // this does not remove dead elements
-        _collisionSystem.SortElements();
+
+        // sort elements and check collision in the root node - removing dead elements is done later on
+        _collisionSystem.SortElementsOnlyThisNode();
         _collisionSystem.CheckCollisionsOnlyThisNode();
-        Task.WaitAll(
-            Task.Factory.StartNew(() => _collisionSystem.RootNode.TopLeftQuadrant.CheckCollisions()),
-            Task.Factory.StartNew(() => _collisionSystem.RootNode.TopRightQuadrant.CheckCollisions()),
-            Task.Factory.StartNew(() => _collisionSystem.RootNode.BottomLeftQuadrant.CheckCollisions()),
-            Task.Factory.StartNew(() => _collisionSystem.RootNode.BottomRightQuadrant.CheckCollisions()));
-        _collisionSystem.RemoveDeadElements();
+
+        Task t1 = Task.Factory.StartNew(() =>
+        {
+            _collisionSystem.RootNode.TopLeftQuadrant.SortElements();
+            _collisionSystem.RootNode.TopLeftQuadrant.CheckCollisions();
+            _collisionSystem.RootNode.TopLeftQuadrant.RemoveDeadElements();
+        });
+
+        Task t2 = Task.Factory.StartNew(() =>
+        {
+            _collisionSystem.RootNode.TopRightQuadrant.SortElements();
+            _collisionSystem.RootNode.TopRightQuadrant.CheckCollisions();
+            _collisionSystem.RootNode.TopRightQuadrant.RemoveDeadElements();
+        });
+
+        Task t3 = Task.Factory.StartNew(() =>
+        {
+            _collisionSystem.RootNode.BottomLeftQuadrant.SortElements();
+            _collisionSystem.RootNode.BottomLeftQuadrant.CheckCollisions();
+            _collisionSystem.RootNode.BottomLeftQuadrant.RemoveDeadElements();
+        });
+
+        Task t4 = Task.Factory.StartNew(() =>
+        {
+            _collisionSystem.RootNode.BottomRightQuadrant.SortElements();
+            _collisionSystem.RootNode.BottomRightQuadrant.CheckCollisions();
+            _collisionSystem.RootNode.BottomRightQuadrant.RemoveDeadElements();
+        });
+
+        // when we have a free core clean up the root node
+        Task.WaitAny(t1, t2, t3, t4);
+        Task t5 = Task.Factory.StartNew(() => _collisionSystem.RemoveDeadElementsOnlyThisNode());
+
+        // wait for all to move forward
+        Task.WaitAll(t1, t2, t3, t4, t5);
+
         ShowVisibleAsteroids();
         #endregion
 
         #region Performance Test Code
-        //if (framesPassed > 100) swUpdate.Start();
+        //if (_framesPassed > 100) _swUpdate.Start();
         //UpdateAsteroids();
         //UpdateLasers();
-        //if (framesPassed > 100) swUpdate.Stop();
+        //if (_framesPassed > 100) _swUpdate.Stop();
 
-        //if (framesPassed > 100) swUpdateTree.Start();
+        //if (_framesPassed > 100) _swUpdateTree.Start();
         //_collisionSystem.UpdateTreeStructure();
-        //if (framesPassed > 100) swUpdateTree.Stop();
+        //if (_framesPassed > 100) _swUpdateTree.Stop();
 
-        //if (framesPassed > 100) swSort.Start();
-        //_collisionSystem.SortElements();
-        //_collisionSystem.SortElementsOnlyThisNode();
-        //if (framesPassed > 100) swSort.Stop();
+        //if (_framesPassed > 100) _swCollisions.Start();
+        //_collisionSystem.RootNode.SortElementsOnlyThisNode();
+        //_collisionSystem.RootNode.CheckCollisionsOnlyThisNode();
 
-        //// assert: all agents in all tables are sorted by positionX
-        //_collisionSystem.RootNode.AgentsOrderCheck();
+        //Task t1 = Task.Factory.StartNew(() =>
+        //{
+        //    _collisionSystem.RootNode.TopLeftQuadrant.SortElements();
+        //    _collisionSystem.RootNode.TopLeftQuadrant.CheckCollisions();
+        //    _collisionSystem.RootNode.TopLeftQuadrant.RemoveDeadElements();
+        //});
 
-        //if (framesPassed > 100) swCollisions.Start();
-        //_collisionSystem.CheckCollisionsOnlyThisNode();
-        //Task.WaitAll(
-        //    Task.Factory.StartNew(() => _collisionSystem.RootNode.TopLeftQuadrant.CheckCollisions()),
-        //    Task.Factory.StartNew(() => _collisionSystem.RootNode.TopRightQuadrant.CheckCollisions()),
-        //    Task.Factory.StartNew(() => _collisionSystem.RootNode.BottomLeftQuadrant.CheckCollisions()),
-        //    Task.Factory.StartNew(() => _collisionSystem.RootNode.BottomRightQuadrant.CheckCollisions()));
-        //if (framesPassed > 100) swCollisions.Stop();
+        //Task t2 = Task.Factory.StartNew(() =>
+        //{
+        //    _collisionSystem.RootNode.TopRightQuadrant.SortElements();
+        //    _collisionSystem.RootNode.TopRightQuadrant.CheckCollisions();
+        //    _collisionSystem.RootNode.TopRightQuadrant.RemoveDeadElements();
+        //});
 
-        //_collisionSystem.RemoveDeadElements();
+        //Task t3 = Task.Factory.StartNew(() =>
+        //{
+        //    _collisionSystem.RootNode.BottomLeftQuadrant.SortElements();
+        //    _collisionSystem.RootNode.BottomLeftQuadrant.CheckCollisions();
+        //    _collisionSystem.RootNode.BottomLeftQuadrant.RemoveDeadElements();
+        //});
+
+        //Task t4 = Task.Factory.StartNew(() =>
+        //{
+        //    _collisionSystem.RootNode.BottomRightQuadrant.SortElements();
+        //    _collisionSystem.RootNode.BottomRightQuadrant.CheckCollisions();
+        //    _collisionSystem.RootNode.BottomRightQuadrant.RemoveDeadElements();
+        //});
+
+        //// if anyone finish give cleaning the root node task
+        //Task.WaitAny(t1, t2, t3, t4);
+        //Task t5 = Task.Factory.StartNew(() => _collisionSystem.RootNode.RemoveDeadElementsOnlyThisNode());
+
+        //// wait for all to finish
+        //Task.WaitAll(t1, t2, t3, t4, t5);
+        //if (_framesPassed > 100) _swCollisions.Stop();
 
         //// assert: no dead ones in the hierarchy at this point
         //_collisionSystem.RootNode.NoDeadAgentsCheck();
@@ -174,21 +227,20 @@ public class GameEngine : MonoBehaviour
         //// assert: the number of live agents in the global table and in the hierarchy are equal
         //_collisionSystem.RootNode.AgentsNumberCoherencyCheck();
 
-        //if (framesPassed > 100) swVisible.Start();
+        //if (_framesPassed > 100) _swVisible.Start();
         //ShowVisibleAsteroids();
-        //if (framesPassed > 100) swVisible.Stop();
+        //if (_framesPassed > 100) _swVisible.Stop();
 
-        //framesPassed++;
-        //if (TestFlag)
+        //_framesPassed++;
+        //if (_testFlag)
         //{
-        //    TestFlag = false;
+        //    _testFlag = false;
 
-        //    long avgTicksUpdate = swUpdate.ElapsedTicks / (framesPassed - 100);
-        //    long avgTicksUpdateTree = swUpdateTree.ElapsedTicks / (framesPassed - 100);
-        //    long avgTicksSort = swSort.ElapsedTicks / (framesPassed - 100);
-        //    long avgTicksCollisions = swCollisions.ElapsedTicks / (framesPassed - 100);
-        //    long avgTickVisible = swVisible.ElapsedTicks / (framesPassed - 100);
-        //    long totalTicks = avgTicksUpdate + avgTicksUpdateTree + avgTicksSort + avgTicksCollisions + avgTickVisible;
+        //    long avgTicksUpdate = _swUpdate.ElapsedTicks / (_framesPassed - 100);
+        //    long avgTicksUpdateTree = _swUpdateTree.ElapsedTicks / (_framesPassed - 100);
+        //    long avgTicksCollisions = _swCollisions.ElapsedTicks / (_framesPassed - 100);
+        //    long avgTickVisible = _swVisible.ElapsedTicks / (_framesPassed - 100);
+        //    long totalTicks = avgTicksUpdate + avgTicksUpdateTree + avgTicksCollisions + avgTickVisible;
 
         //    System.Diagnostics.Debugger.Break();
         //}
@@ -252,7 +304,7 @@ public class GameEngine : MonoBehaviour
 
         if (Input.GetKey(KeyCode.Escape))
         {
-            TestFlag = true;
+            _testFlag = true;
             Application.Quit();
         }
     }
@@ -417,7 +469,7 @@ public class GameEngine : MonoBehaviour
                 500 + GridDimensionFloat / 2,
                 1_500 + GridDimensionFloat / 2),
             20,
-            20);
+            10);
 
         _collisionSystem.GenerateQuadTree(Agents);
     }
@@ -425,6 +477,9 @@ public class GameEngine : MonoBehaviour
     void ShowVisibleAsteroids()
     {
         int poolElementIndex = 0;
+
+        float playerPosX = Agents[0].Position.x;
+        float playerPosY = Agents[0].Position.y;
 
         for (int i = 7; i < Agents.Length; i++)
         {
@@ -434,17 +489,15 @@ public class GameEngine : MonoBehaviour
             if (a.Flags != 2)
                 continue;
 
-            ref Agent player = ref Agents[0];
-
             // is visible in x?
-            float value = player.Position.x - a.Position.x;
+            float value = playerPosX - a.Position.x;
             if (value < 0)
                 value *= -1;
             if (value > FrustumSizeX)
                 continue;
 
             // is visible in y?
-            value = player.Position.y - a.Position.y;
+            value = playerPosY - a.Position.y;
             if (value < 0)
                 value *= -1;
             if (value > FrustumSizeY)
@@ -458,8 +511,12 @@ public class GameEngine : MonoBehaviour
         }
 
         // unused objects go to the graveyard
-        while (poolElementIndex < AsteroidPoolSize)
-            _asteroidPool[poolElementIndex++].transform.position = ObjectGraveyardPosition;
+        // to avoid multiple reassignment we check if we the number of elements on the screen is lower than frame before
+        if (poolElementIndex < _asteroidPoolLastUsedObjectId)
+            while (poolElementIndex < AsteroidPoolSize)
+                _asteroidPool[poolElementIndex++].transform.position = ObjectGraveyardPosition;
+
+        _asteroidPoolLastUsedObjectId = poolElementIndex;
     }
 
     #region Initializers

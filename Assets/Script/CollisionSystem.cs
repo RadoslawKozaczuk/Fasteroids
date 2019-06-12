@@ -31,6 +31,8 @@
 
     public void RemoveDeadElements() => RootNode.RemoveDeadElements();
 
+    public void RemoveDeadElementsOnlyThisNode() => RootNode.RemoveDeadElementsOnlyThisNode();
+
     public void CheckCollisions() => RootNode.CheckCollisions();
 
     public void CheckCollisionsOnlyThisNode() => RootNode.CheckCollisionsOnlyThisNode();
