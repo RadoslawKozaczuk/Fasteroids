@@ -1,30 +1,19 @@
-﻿using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
+﻿using System.Threading.Tasks;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.UI;
 
 public class GameEngine : MonoBehaviour
 {
-    [StructLayout(LayoutKind.Explicit)]
-    struct FloatIntUnion
-    {
-        [FieldOffset(0)]
-        public float f;
-
-        [FieldOffset(0)]
-        public int tmp;
-    }
-
     #region Constants
-    const float AsteroidRadius = 0.20f;
+    const float AsteroidRadius = 0.19f;
     const float AsteroidRadius2 = AsteroidRadius + AsteroidRadius;
     const float AsteroidTranformValueZ = 0.4f;
-    const float LaserRadius = 0.08f;
+    const float LaserRadius = 0.07f;
     const float LaserSpeed = 2.5f;
 
-    const float AsteroidSpeedMin = 0.010f; // distance traveled per frame
-    const float AsteroidSpeedMax = 0.025f; // distance traveled per frame
+    const float AsteroidSpeedMin = 0.009f; // distance traveled per frame
+    const float AsteroidSpeedMax = 0.02f; // distance traveled per frame
     const int GridDimensionInt = 160;
     const float GridDimensionFloat = 160;
     const int TotalNumberOfAsteroids = GridDimensionInt * GridDimensionInt;
@@ -36,6 +25,8 @@ public class GameEngine : MonoBehaviour
     const float AsteroidPlayerRadius = AsteroidRadius + PlayerRadius; // to reduce number of additions
     const float AsteroidLaserRadius = AsteroidRadius + LaserRadius; // to reduce number of additions
 
+    const float WorldOffetValue = 1000f; // we move world top right to be sure we operate on positive numbers
+
     // pool sizes
     const int AsteroidPoolSize = 40; // in tests this never went above 35 so for safety i gave 5 more
     const int LaserPoolSize = 6; // we shot once per 0.5 frame and the lifetime is 3s
@@ -44,14 +35,21 @@ public class GameEngine : MonoBehaviour
     const float FrustumSizeY = 2.3f;
     #endregion
 
+    public static Agent[] Agents = new Agent[1 + 6 + TotalNumberOfAsteroids]; // player + total number of lasers
+
+    // this is where unused object goes upon death
+    public static readonly Vector3 ObjectGraveyardPosition = new Vector3(-10, -10, 0.3f);
+    public static int NumberOfAsteroidsDestroyedThisFrame;
+    public static bool DidPlayerDiedThisFrame;
+
     #region Private Fields
     // readonly fields and tables
     static readonly float[] _speedLookupTable = new float[256];
     static readonly float[] _directionLookupTable = new float[256];
-    static readonly Asteroid[] _asteroids = new Asteroid[TotalNumberOfAsteroids];
 
-    // this is were unused object goes upon death
-    static readonly Vector3 _objectGraveyardPosition = new Vector3(-99999, -99999, 0.3f);
+    // object pools
+    static readonly GameObject[] _asteroidPool = new GameObject[AsteroidPoolSize];
+    static readonly GameObject[] _laserPool = new GameObject[LaserPoolSize];
 
     // prefabs
     [SerializeField] GameObject _asteroidPrefab;
@@ -64,16 +62,8 @@ public class GameEngine : MonoBehaviour
     [SerializeField] Button _restartButton;
     [SerializeField] Text _youLoseLabel;
 
-    // object pools
-    GameObject[] _asteroidPool;
-    GameObject[] _laserPool;
-
-    // cached position tables - to reduce number of transform accessors calls
-    Vector3[] _laserCachedPositions;
-    Vector3 _playerCachedPosition;
-
+    CollisionSystem _collisionSystem;
     Transform _playerTransform;
-    bool[] _laserDestructionFlags; // indicates if the corresponding laser beam is destroyed
     float _timeToFireNextLaser = 0.5f;
     int _laserNextFreeIndex;
     int _playerScore = 0;
@@ -82,228 +72,189 @@ public class GameEngine : MonoBehaviour
 
     void Start()
     {
+        CreateObjectPools();
+        InitializeLookupTables(AsteroidSpeedMin, AsteroidSpeedMax);
+        InitializeAsteroidsGridLayout();
+
         _playerScoreLabel.text = "score: 0";
         _restartButton.gameObject.SetActive(false);
         _youLoseLabel.gameObject.SetActive(false);
 
-        CreateObjectPoolsAndTables();
-        InitializeLookupTables(AsteroidSpeedMin, AsteroidSpeedMax);
-        InitializeAsteroidsGridLayout();
-        SortAsteroids(0, TotalNumberOfAsteroids - 1, 2 * FloorLog2(TotalNumberOfAsteroids));
-
         _playerTransform = Instantiate(_spaceshipPrefab).transform;
+
         _playerTransform.position = new Vector3(
-            GridDimensionFloat / 2f - 0.5f,
-            GridDimensionFloat / 2f - 0.5f,
+            GridDimensionFloat / 2f - 0.5f + WorldOffetValue,
+            GridDimensionFloat / 2f - 0.5f + WorldOffetValue,
             0.3f);
+
+        _collisionSystem = new CollisionSystem(
+            new Quad(
+                500 + GridDimensionFloat / 2,
+                1_500 + GridDimensionFloat / 2,
+                500 + GridDimensionFloat / 2,
+                1_500 + GridDimensionFloat / 2),
+            20, // this value gave the best performance for 160 x 160
+            10 // this value gave the best performance for 160 x 160
+        );
+
+        _collisionSystem.GenerateQuadTree(Agents);
     }
+
+    // test related
+    //System.Diagnostics.Stopwatch swUpdate = new System.Diagnostics.Stopwatch();
+    //System.Diagnostics.Stopwatch swUpdateTree = new System.Diagnostics.Stopwatch();
+    //System.Diagnostics.Stopwatch swSort = new System.Diagnostics.Stopwatch();
+    //System.Diagnostics.Stopwatch swCollisions = new System.Diagnostics.Stopwatch();
+    //System.Diagnostics.Stopwatch swVisible = new System.Diagnostics.Stopwatch();
+    //long framesPassed = 0;
+    bool TestFlag = false;
 
     void Update()
     {
         // Transform.position is an accessor and calling it results in a calculation behind the scenes
         // so we cache it for the time of the frame calculation
-        _playerCachedPosition = _playerTransform.position;
+        Vector3 v3 = _playerTransform.position;
+        Agents[0].Position = new float2(v3.x, v3.y);
         for (int i = 0; i < LaserPoolSize; i++)
-            _laserCachedPositions[i] = _laserPool[i].transform.position;
-
-        // we do everything in one class to reduce the number of Update calls
-        // small gain but maximum speed means maximum speed
+        {
+            v3 = _laserPool[i].transform.position;
+            Agents[i + 1].Position = new float2(v3.x, v3.y);
+        }
 
         HandleInput();
 
-        UpdateAsteroids();
-        SortAsteroids(0, TotalNumberOfAsteroids - 1, 2 * FloorLog2(TotalNumberOfAsteroids));
-        UpdateLasers();
-
-        CheckCollisionsBetweenAsteroids();
-        CheckCollisionsWithShipAndBullets();
+        #region Production Code
+        UpdateAsteroids(); // this also reinserts newly spawned asteroids
+        UpdateLasers(); // this also reinserts newly spawned laser beams
+        _collisionSystem.UpdateTreeStructure(); // this does not remove dead elements
+        _collisionSystem.SortElements();
+        _collisionSystem.CheckCollisionsOnlyThisNode();
+        Task.WaitAll(
+            Task.Factory.StartNew(() => _collisionSystem.RootNode.TopLeftQuadrant.CheckCollisions()),
+            Task.Factory.StartNew(() => _collisionSystem.RootNode.TopRightQuadrant.CheckCollisions()),
+            Task.Factory.StartNew(() => _collisionSystem.RootNode.BottomLeftQuadrant.CheckCollisions()),
+            Task.Factory.StartNew(() => _collisionSystem.RootNode.BottomRightQuadrant.CheckCollisions()));
+        _collisionSystem.RemoveDeadElements();
         ShowVisibleAsteroids();
+        #endregion
+
+        #region Performance Test Code
+        //if (framesPassed > 100) swUpdate.Start();
+        //UpdateAsteroids();
+        //UpdateLasers();
+        //if (framesPassed > 100) swUpdate.Stop();
+
+        //if (framesPassed > 100) swUpdateTree.Start();
+        //_collisionSystem.UpdateTreeStructure();
+        //if (framesPassed > 100) swUpdateTree.Stop();
+
+        //if (framesPassed > 100) swSort.Start();
+        //_collisionSystem.SortElements();
+        //_collisionSystem.SortElementsOnlyThisNode();
+        //if (framesPassed > 100) swSort.Stop();
+
+        //// assert: all agents in all tables are sorted by positionX
+        //_collisionSystem.RootNode.AgentsOrderCheck();
+
+        //if (framesPassed > 100) swCollisions.Start();
+        //_collisionSystem.CheckCollisionsOnlyThisNode();
+        //Task.WaitAll(
+        //    Task.Factory.StartNew(() => _collisionSystem.RootNode.TopLeftQuadrant.CheckCollisions()),
+        //    Task.Factory.StartNew(() => _collisionSystem.RootNode.TopRightQuadrant.CheckCollisions()),
+        //    Task.Factory.StartNew(() => _collisionSystem.RootNode.BottomLeftQuadrant.CheckCollisions()),
+        //    Task.Factory.StartNew(() => _collisionSystem.RootNode.BottomRightQuadrant.CheckCollisions()));
+        //if (framesPassed > 100) swCollisions.Stop();
+
+        //_collisionSystem.RemoveDeadElements();
+
+        //// assert: no dead ones in the hierarchy at this point
+        //_collisionSystem.RootNode.NoDeadAgentsCheck();
+        //// assert: intermediate nodes has their movable tables empty
+        //_collisionSystem.RootNode.NoItermidiateMovablesCheck();
+        //// assert: the number of live agents in the global table and in the hierarchy are equal
+        //_collisionSystem.RootNode.AgentsNumberCoherencyCheck();
+
+        //if (framesPassed > 100) swVisible.Start();
+        //ShowVisibleAsteroids();
+        //if (framesPassed > 100) swVisible.Stop();
+
+        //framesPassed++;
+        //if (TestFlag)
+        //{
+        //    TestFlag = false;
+
+        //    long avgTicksUpdate = swUpdate.ElapsedTicks / (framesPassed - 100);
+        //    long avgTicksUpdateTree = swUpdateTree.ElapsedTicks / (framesPassed - 100);
+        //    long avgTicksSort = swSort.ElapsedTicks / (framesPassed - 100);
+        //    long avgTicksCollisions = swCollisions.ElapsedTicks / (framesPassed - 100);
+        //    long avgTickVisible = swVisible.ElapsedTicks / (framesPassed - 100);
+        //    long totalTicks = avgTicksUpdate + avgTicksUpdateTree + avgTicksSort + avgTicksCollisions + avgTickVisible;
+
+        //    System.Diagnostics.Debugger.Break();
+        //}
+        #endregion
+
+        // handling multi threaded output
+        if (NumberOfAsteroidsDestroyedThisFrame > 0)
+        {
+            _playerScore += NumberOfAsteroidsDestroyedThisFrame;
+            NumberOfAsteroidsDestroyedThisFrame = 0;
+            _playerScoreLabel.text = $"score: {_playerScore}";
+        }
+
+        if (DidPlayerDiedThisFrame)
+        {
+            GameOver();
+            DidPlayerDiedThisFrame = false;
+        }
 
         // after calculation is done we can assign it back to the transform
-        _playerTransform.position = _playerCachedPosition;
+        float2 playerPosition = Agents[0].Position;
+        _playerTransform.position = new Vector3(playerPosition.x, playerPosition.y, 0.3f);
         for (int i = 0; i < LaserPoolSize; i++)
-            _laserPool[i].transform.position = _laserCachedPositions[i];
+        {
+            float2 pos = Agents[i + 1].Position;
+            _laserPool[i].transform.position = new Vector3(pos.x, pos.y, 0.3f);
+        }
 
         if (!_playerDestroyed)
-            _mainCamera.transform.position = new Vector3(_playerCachedPosition.x, _playerCachedPosition.y, 0f);
+            _mainCamera.transform.position = new Vector3(playerPosition.x, playerPosition.y, 0f);
     }
-
-    #region Dedicated Sorting Methods
-    /*  All the code in this region is just decompiled and slightly optimized System.Array.Sort() method.
- 
-        To gain some speed boost I deleted:
-            - all the safety checks as we know what data are we going to deal with anyway 
-                almost insignificant in terms of speed gain but always something
-            - all the boiler plate code, interfaces, generics etc.
-            - changed the code so the reference to the table is no longer passed from a method to a method - tiny gain
-            - and most importantly in some cases I could get rid of passing items by value
-                and instead we just pass its index in the table - the reduces greatly the number of the struct copying
-     
-        All in all improvements above gave me 0.5 ms shorter sorting time (measured in the editor). 
-    */
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    int FloorLog2(int n)
-    {
-        int num = 0;
-        for (; n >= 1; n /= 2)
-            ++num;
-        return num;
-    }
-
-    void SwapIfGreater(int a, int b)
-    {
-        if (a == b || Compare(a, b) <= 0)
-            return;
-
-        Asteroid temp = _asteroids[a];
-        _asteroids[a] = _asteroids[b];
-        _asteroids[b] = temp;
-    }
-
-    void Swap(int i, int j)
-    {
-        if (i == j)
-            return;
-        Asteroid temp = _asteroids[i];
-        _asteroids[i] = _asteroids[j];
-        _asteroids[j] = temp;
-    }
-
-    void SortAsteroids(int lo, int hi, int depthLimit)
-    {
-        int num1;
-        for (; hi > lo; hi = num1 - 1)
-        {
-            int num2 = hi - lo + 1;
-            if (num2 <= 16)
-            {
-                if (num2 == 1)
-                    break;
-                if (num2 == 2)
-                {
-                    SwapIfGreater(lo, hi);
-                    break;
-                }
-                if (num2 == 3)
-                {
-                    SwapIfGreater(lo, hi - 1);
-                    SwapIfGreater(lo, hi);
-                    SwapIfGreater(hi - 1, hi);
-                    break;
-                }
-                InsertionSort(lo, hi);
-                break;
-            }
-            if (depthLimit == 0)
-            {
-                Heapsort(lo, hi);
-                break;
-            }
-            --depthLimit;
-            num1 = PickPivotAndPartition(lo, hi);
-            SortAsteroids(num1 + 1, hi, depthLimit);
-        }
-    }
-
-    int PickPivotAndPartition(int lo, int hi)
-    {
-        int index = lo + (hi - lo) / 2;
-        SwapIfGreater(lo, index);
-        SwapIfGreater(lo, hi);
-        SwapIfGreater(index, hi);
-        Asteroid key = _asteroids[index];
-        Swap(index, hi - 1);
-        int i = lo;
-        int j = hi - 1;
-        while (i < j)
-        {
-            do
-                ;
-            while (Compare(++i, key) < 0);
-            do
-                ;
-            while (Compare(key, --j) < 0);
-            if (i < j)
-                Swap(i, j);
-            else
-                break;
-        }
-        Swap(i, hi - 1);
-        return i;
-    }
-
-    void Heapsort(int lo, int hi)
-    {
-        int n = hi - lo + 1;
-        for (int i = n / 2; i >= 1; --i)
-            DownHeap(i, n, lo);
-        for (int index = n; index > 1; --index)
-        {
-            Swap(lo, lo + index - 1);
-            DownHeap(1, index - 1, lo);
-        }
-    }
-
-    void DownHeap(int i, int n, int lo)
-    {
-        Asteroid key = _asteroids[lo + i - 1];
-        int num;
-        for (; i <= n / 2; i = num)
-        {
-            num = 2 * i;
-            if (num < n && Compare(lo + num - 1, lo + num) < 0)
-                ++num;
-            if (Compare(key, lo + num - 1) < 0)
-                _asteroids[lo + i - 1] = _asteroids[lo + num - 1];
-            else
-                break;
-        }
-        _asteroids[lo + i - 1] = key;
-    }
-
-    void InsertionSort(int lo, int hi)
-    {
-        for (int index1 = lo; index1 < hi; ++index1)
-        {
-            int index2 = index1;
-            Asteroid key;
-            for (key = _asteroids[index1 + 1]; index2 >= lo && Compare(key, index2) < 0; --index2)
-                _asteroids[index2 + 1] = _asteroids[index2];
-            _asteroids[index2 + 1] = key;
-        }
-    }
-
-    // a > b = 1
-    // a == b = 0
-    // a < b = -1
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    int Compare(int a, int b) => _asteroids[a].Position.x >= _asteroids[b].Position.x ? 1 : -1;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    int Compare(Asteroid a, int b) => a.Position.x >= _asteroids[b].Position.x ? 1 : -1;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    int Compare(int a, Asteroid b) => _asteroids[a].Position.x >= b.Position.x ? 1 : -1;
-    #endregion
 
     void HandleInput()
     {
         if (!_playerDestroyed)
         {
-            if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow))
-                _playerCachedPosition += _playerTransform.up * Time.deltaTime * PlayerSpeed;
-            else if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow))
-                _playerCachedPosition -= _playerTransform.up * Time.deltaTime * PlayerSpeed;
+            ref Agent player = ref Agents[0];
+            bool movingBackwards = false;
 
+            if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow))
+            {
+                Vector3 newPostion = new Vector3(player.Position.x, player.Position.y, 0.3f)
+                    + _playerTransform.up * Time.deltaTime * PlayerSpeed;
+                player.Position = new float2(newPostion.x, newPostion.y);
+            }
+            else if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow))
+            {
+                Vector3 newPostion = new Vector3(player.Position.x, player.Position.y, 0.3f)
+                    - _playerTransform.up * Time.deltaTime * PlayerSpeed;
+                player.Position = new float2(newPostion.x, newPostion.y);
+
+                movingBackwards = true;
+            }
+
+            // when moving backwards rotation is reverse to make it more natural
             if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow))
-                _playerTransform.Rotate(new Vector3(0, 0, PlayerRotationFactor));
+                _playerTransform.Rotate(new Vector3(0, 0, movingBackwards ? -PlayerRotationFactor : PlayerRotationFactor));
             else if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow))
-                _playerTransform.Rotate(new Vector3(0, 0, -PlayerRotationFactor));
+                _playerTransform.Rotate(new Vector3(0, 0, movingBackwards ? PlayerRotationFactor : -PlayerRotationFactor));
         }
 
         if (Input.GetKey(KeyCode.Escape))
+        {
+            TestFlag = true;
             Application.Quit();
+        }
     }
 
     /// <summary>
@@ -312,11 +263,13 @@ public class GameEngine : MonoBehaviour
     void UpdateAsteroids()
     {
         float deltaTime = Time.deltaTime;
-        for (int i = 0; i < TotalNumberOfAsteroids; ++i)
-        {
-            ref Asteroid a = ref _asteroids[i];
 
-            if (a.Flags == 0)
+        // asteroids starts at 7
+        for (int i = 7; i < Agents.Length; ++i)
+        {
+            ref Agent a = ref Agents[i];
+
+            if (a.Flags == 2) // asteroid
             {
                 // normal update
                 a.Position += new float2(
@@ -325,76 +278,53 @@ public class GameEngine : MonoBehaviour
 
                 continue;
             }
+            else if (a.Flags == 5) // dead asteroid
+            {
+                a.TimeLeftToRespawn -= deltaTime;
+                if (a.TimeLeftToRespawn <= 0)
+                {
+                    RespawnAsteroid(ref a);
 
-            a.TimeLeftToRespawn -= deltaTime;
-            if (a.TimeLeftToRespawn <= 0)
-                RespawnAsteroid(ref a);
+                    // insert it back to the collision system
+                    _collisionSystem.RootNode.Add(i);
+                }
+            }
         }
     }
 
-    void RespawnAsteroid(ref Asteroid a)
+    void RespawnAsteroid(ref Agent a)
     {
+        float2 playerPosition = Agents[0].Position;
+
         // iterate until you find a position outside of player's frustum
         // it is not the most mathematically correct solution
         // as the asteroids dispersion will not be even (those that normally would spawn inside the frustum 
         // will spawn right next to the frustum's edge instead)
-        float posX = UnityEngine.Random.Range(0, GridDimensionFloat);
-        if (posX > _playerCachedPosition.x)
+        float posX = UnityEngine.Random.Range(0, GridDimensionFloat) + WorldOffetValue;
+        if (posX > playerPosition.x)
         {
             // tried to spawn on the right side of the player
-            float value1 = posX;
-            if (value1 < 0)
-                value1 *= -1;
-
-            float value2 = _playerCachedPosition.x;
-            if (value2 < 0)
-                value2 *= -1;
-
-            if (value1 - value2 < FrustumSizeX)
+            if (posX - playerPosition.x < FrustumSizeX)
                 posX += FrustumSizeX;
         }
         else
         {
             // left side
-            float value1 = posX;
-            if (value1 < 0)
-                value1 *= -1;
-
-            float value2 = _playerCachedPosition.x;
-            if (value2 < 0)
-                value2 *= -1;
-
-            if (value2 - value1 < FrustumSizeX)
+            if (playerPosition.x - posX < FrustumSizeX)
                 posX -= FrustumSizeX;
         }
 
-        float posY = UnityEngine.Random.Range(0, GridDimensionFloat);
-        if (posY > _playerCachedPosition.y)
+        float posY = UnityEngine.Random.Range(0, GridDimensionFloat) + WorldOffetValue;
+        if (posY > playerPosition.y)
         {
             // tried to spawn above the player
-            float value1 = posY;
-            if (value1 < 0)
-                value1 *= -1;
-
-            float value2 = _playerCachedPosition.y;
-            if (value2 < 0)
-                value2 *= -1;
-
-            if (value1 - value2 < FrustumSizeY)
+            if (posY - playerPosition.y < FrustumSizeY)
                 posY += FrustumSizeY;
         }
         else
         {
             // below
-            float value1 = posX;
-            if (value1 < 0)
-                value1 *= -1;
-
-            float value2 = _playerCachedPosition.y;
-            if (value2 < 0)
-                value2 *= -1;
-
-            if (value2 - value1 < FrustumSizeY)
+            if (playerPosition.y - posX < FrustumSizeY)
                 posY -= FrustumSizeY;
         }
 
@@ -402,7 +332,7 @@ public class GameEngine : MonoBehaviour
         a.Position = new float2(posX, posY);
         a.DirectionX = (byte)UnityEngine.Random.Range(0, 256);
         a.DirectionY = (byte)UnityEngine.Random.Range(0, 256);
-        a.Flags = 0; // normal state for a living asteroid
+        a.Flags = 2; // normal state for a living asteroid
     }
 
     /// <summary>
@@ -414,191 +344,42 @@ public class GameEngine : MonoBehaviour
 
         // update laser positions
         for (int i = 0; i < LaserPoolSize; i++)
-            if (!_laserDestructionFlags[i])
-                _laserCachedPositions[i] += _laserPool[i].transform.up * Time.deltaTime * LaserSpeed;
+        {
+            ref Agent laser = ref Agents[i + 1];
+            if (laser.Flags == 1) // laser is alive
+            {
+                Vector3 newPos = new Vector3(laser.Position.x, laser.Position.y, 0)
+                    + _laserPool[i].transform.up * Time.deltaTime * LaserSpeed;
+                laser.Position = new float2(newPos.x, newPos.y);
+            }
+            else
+                laser.Position = new float2(ObjectGraveyardPosition.x, ObjectGraveyardPosition.y);
+        }
 
         // spawn new one every half second
         if (!_playerDestroyed && _timeToFireNextLaser < 0)
         {
             _timeToFireNextLaser = 0.5f;
-            _laserDestructionFlags[_laserNextFreeIndex] = false;
-            _laserCachedPositions[_laserNextFreeIndex] = _playerCachedPosition + _playerTransform.up * 0.3f;
+
+            Vector3 spawnPos = new Vector3(Agents[0].Position.x, Agents[0].Position.y, 0f) + _playerTransform.up * 0.4f;
+
+            // first agent is always player
+            // in the _agents table lasers occupy positions from 1 to 6
+            Agents[_laserNextFreeIndex + 1].Position = new float2(spawnPos.x, spawnPos.y);
             _laserPool[_laserNextFreeIndex].transform.rotation = _playerTransform.rotation;
+
+            if (Agents[_laserNextFreeIndex + 1].Flags == 4)
+            {
+                Agents[_laserNextFreeIndex + 1].Flags = 1;
+                _collisionSystem.RootNode.Add(_laserNextFreeIndex + 1);
+            }
 
             if (++_laserNextFreeIndex > LaserPoolSize - 1)
                 _laserNextFreeIndex = 0;
         }
     }
 
-    /// <summary>
-    /// Check if there is any collision between any two asteroids in the game.
-    /// Updates the game state if any collision has been found.
-    /// </summary>
-    void CheckCollisionsBetweenAsteroids()
-    {
-        // the last one is the last to the right it does not need to be processed because
-        // its collisions are already handled by the ones preceding him
-        for (int indexA = 0; indexA < TotalNumberOfAsteroids - 1; indexA++)
-        {
-            int indexB = indexA + 1;
-            ref Asteroid a = ref _asteroids[indexA];
-            ref Asteroid b = ref _asteroids[indexB];
-
-            float difX = b.Position.x - a.Position.x;
-            if (difX >= AsteroidRadius2)
-                continue; // b is too far on x axis
-
-            // a is destroyed
-            if (a.Flags == 1)
-                continue;
-
-            // check for other asteroids
-            while (indexB < TotalNumberOfAsteroids - 1)
-            {
-                float difY = b.Position.y - a.Position.y;
-                if (difY < 0)
-                    difY *= -1;
-
-                if (difY >= AsteroidRadius2)
-                {
-                    b = ref _asteroids[++indexB];
-                    difX = b.Position.x - a.Position.x;
-                    if (difX >= AsteroidRadius2)
-                        break; // b is too far on x axis
-                    continue;
-                }
-
-                // b is destroyed
-                if (b.Flags == 1)
-                {
-                    b = ref _asteroids[++indexB];
-                    difX = b.Position.x - a.Position.x;
-                    if (difX >= AsteroidRadius2)
-                        break; // b is too far on x axis
-                    continue;
-                }
-
-                // FastSqrt offers better performance for slightly less accurate results
-                // additionally we perform manual power^2 instead of call to the function 
-                // provided because again it is faster this way
-                float distance = FastSqrt(difX * difX + difY * difY);
-                if (distance < AsteroidRadius2)
-                {
-                    // collision! mark both as destroyed in this frame and break the loop
-                    a.Flags = 1; // destroyed
-                    b.Flags = 1; // destroyed
-                    a.TimeLeftToRespawn = 1f;
-                    b.TimeLeftToRespawn = 1f;
-                    ++indexA; // increase by one here and again in the for loop
-                    break;
-                }
-                else
-                {
-                    // no collision with this one but it maybe with the next one
-                    // as long as the x difference is lower than Radius * 2
-                    b = ref _asteroids[++indexB];
-                    difX = b.Position.x - a.Position.x;
-                    if (difX >= AsteroidRadius2)
-                        break; // b is too far on x axis
-                }
-            };
-        }
-    }
-
-    /// <summary>
-    /// Check if there is any collision between any asteroid and any laser or player.
-    /// Updates the game state if any collision has been found.
-    /// </summary>
-    void CheckCollisionsWithShipAndBullets()
-    {
-        float lowestX = _playerCachedPosition.x;
-        float highestX = _playerCachedPosition.x;
-
-        for (int i = 0; i < LaserPoolSize; i++)
-        {
-            if (_laserCachedPositions[i].x < lowestX)
-                lowestX = _laserCachedPositions[i].x;
-            else if (_laserCachedPositions[i].x > highestX)
-                highestX = _laserCachedPositions[i].x;
-        }
-
-        // find the range within collision is possible
-        for (int i = 0; i < TotalNumberOfAsteroids; i++)
-        {
-            ref Asteroid a = ref _asteroids[i];
-
-            // omit destroyed
-            if (a.Flags == 1)
-                continue;
-
-            if (a.Position.x < lowestX)
-            {
-                float value = lowestX - a.Position.x;
-                if (value < 0)
-                    value *= -1;
-
-                // here we need to be careful to always pick the radius that is higher
-                // for now both player and laser have the same radius
-                if (value > AsteroidPlayerRadius)
-                    continue; // no collisions possible
-            }
-            else if (a.Position.x > highestX)
-            {
-                float value = highestX - a.Position.x;
-                if (value < 0)
-                    value *= -1;
-
-                // same here my friend - if the laser's would become bigger pick the AsteroidLaserRadius constant instead
-                if (value > AsteroidPlayerRadius)
-                    break; // no collisions possible neither for this nor for all the rest
-            }
-
-            // check asteroid collision with lasers first
-            float distance;
-            for (int j = 0; j < LaserPoolSize; j++)
-            {
-                if (_laserDestructionFlags[j])
-                    continue;
-
-                // calculate the distance between the asteroid and the laser
-                distance = FastSqrt(
-                    (_laserCachedPositions[j].x - a.Position.x) * (_laserCachedPositions[j].x - a.Position.x)
-                    + (_laserCachedPositions[j].y - a.Position.y) * (_laserCachedPositions[j].y - a.Position.y));
-
-                // collision
-                if (distance < AsteroidLaserRadius)
-                {
-                    UpdateScore();
-                    _laserDestructionFlags[j] = true;
-                    _laserCachedPositions[j] = _objectGraveyardPosition;
-                    a.Flags = 1; // destroyed
-                    a.TimeLeftToRespawn = 1f;
-                    break;
-                }
-            }
-
-            // asteroid destroyed in the loop above
-            if (a.Flags == 1)
-                continue;
-
-            if (_playerDestroyed)
-                continue;
-
-            // check collision with the player
-            distance = FastSqrt(
-                (_playerCachedPosition.x - a.Position.x) * (_playerCachedPosition.x - a.Position.x)
-                + (_playerCachedPosition.y - a.Position.y) * (_playerCachedPosition.y - a.Position.y));
-
-            if (distance < AsteroidPlayerRadius)
-            {
-                // this asteroid destroyed player
-                a.Flags = 1;
-                GameOverFunction();
-            }
-        }
-    }
-
-    void GameOverFunction()
+    void GameOver()
     {
         _playerDestroyed = true;
         _playerTransform.gameObject.SetActive(false);
@@ -613,15 +394,15 @@ public class GameEngine : MonoBehaviour
 
         _playerTransform.gameObject.SetActive(true);
         _playerTransform.position = new Vector3(
-            GridDimensionFloat / 2f - 0.5f,
-            GridDimensionFloat / 2f - 0.5f,
+            GridDimensionFloat / 2f - 0.5f + WorldOffetValue,
+            GridDimensionFloat / 2f - 0.5f + WorldOffetValue,
             0.3f);
         _playerTransform.rotation = new Quaternion(0, 0, 0, 0);
 
         for (int i = 0; i < LaserPoolSize; i++)
         {
-            _laserDestructionFlags[i] = true;
-            _laserCachedPositions[i] = _objectGraveyardPosition;
+            Agents[i + 1].Flags = 4;
+            Agents[i + 1].Position = new float2(ObjectGraveyardPosition.x, ObjectGraveyardPosition.y);
         }
 
         _playerDestroyed = false;
@@ -629,28 +410,41 @@ public class GameEngine : MonoBehaviour
         _youLoseLabel.gameObject.SetActive(false);
 
         InitializeAsteroidsGridLayout();
+        _collisionSystem = new CollisionSystem(
+            new Quad(
+                500 + GridDimensionFloat / 2,
+                1_500 + GridDimensionFloat / 2,
+                500 + GridDimensionFloat / 2,
+                1_500 + GridDimensionFloat / 2),
+            20,
+            20);
+
+        _collisionSystem.GenerateQuadTree(Agents);
     }
 
     void ShowVisibleAsteroids()
     {
         int poolElementIndex = 0;
 
-        for (int i = 0; i < TotalNumberOfAsteroids; i++)
+        for (int i = 7; i < Agents.Length; i++)
         {
-            ref Asteroid a = ref _asteroids[i];
+            ref Agent a = ref Agents[i];
 
-            if (a.Flags == 1)
+            // is not an asteroid
+            if (a.Flags != 2)
                 continue;
 
+            ref Agent player = ref Agents[0];
+
             // is visible in x?
-            float value = _playerCachedPosition.x - a.Position.x;
+            float value = player.Position.x - a.Position.x;
             if (value < 0)
                 value *= -1;
             if (value > FrustumSizeX)
                 continue;
 
             // is visible in y?
-            value = _playerCachedPosition.y - a.Position.y;
+            value = player.Position.y - a.Position.y;
             if (value < 0)
                 value *= -1;
             if (value > FrustumSizeY)
@@ -665,61 +459,48 @@ public class GameEngine : MonoBehaviour
 
         // unused objects go to the graveyard
         while (poolElementIndex < AsteroidPoolSize)
-            _asteroidPool[poolElementIndex++].transform.position = _objectGraveyardPosition;
+            _asteroidPool[poolElementIndex++].transform.position = ObjectGraveyardPosition;
     }
-
-    void UpdateScore() => _playerScoreLabel.text = "score: " + ++_playerScore;
 
     #region Initializers
-    void InitializeAsteroidsRandomPosition()
-    {
-        for (int x = 0, i = 0; x < GridDimensionInt; x++)
-            for (int y = 0; y < GridDimensionInt; y++)
-            {
-                _asteroids[i++] = new Asteroid()
-                {
-                    Position = new float2(
-                        UnityEngine.Random.Range(0, GridDimensionFloat),
-                        UnityEngine.Random.Range(0, GridDimensionFloat)),
-                    DirectionX = (byte)UnityEngine.Random.Range(0, 256),
-                    DirectionY = (byte)UnityEngine.Random.Range(0, 256),
-                    Speed = (byte)UnityEngine.Random.Range(0, 256),
-                    Flags = 0
-                };
-            }
-    }
-
     void InitializeAsteroidsGridLayout()
     {
-        for (int x = 0, i = 0; x < GridDimensionInt; x++)
-            for (int y = 0; y < GridDimensionInt; y++)
-                _asteroids[i++] = new Asteroid()
+        // player
+        Agents[0] = new Agent() { Flags = 0 };
+
+        // lasers
+        Agents[1] = new Agent() { Flags = 4 };
+        Agents[2] = new Agent() { Flags = 4 };
+        Agents[3] = new Agent() { Flags = 4 };
+        Agents[4] = new Agent() { Flags = 4 };
+        Agents[5] = new Agent() { Flags = 4 };
+        Agents[6] = new Agent() { Flags = 4 };
+
+        int i = 7; // player takes 0, lasers from 1 to 6
+        for (int x = (int)WorldOffetValue; x < GridDimensionInt + WorldOffetValue; x++)
+            for (int y = (int)WorldOffetValue; y < GridDimensionInt + WorldOffetValue; y++)
+                Agents[i++] = new Agent()
                 {
                     Position = new float2(x, y),
                     DirectionX = (byte)UnityEngine.Random.Range(0, 256),
                     DirectionY = (byte)UnityEngine.Random.Range(0, 256),
                     Speed = (byte)UnityEngine.Random.Range(0, 256),
-                    Flags = 0
+                    Flags = 2 // living asteroid
                 };
     }
 
-    void CreateObjectPoolsAndTables()
+    void CreateObjectPools()
     {
-        _asteroidPool = new GameObject[AsteroidPoolSize];
         for (int i = 0; i < AsteroidPoolSize; i++)
         {
             _asteroidPool[i] = Instantiate(_asteroidPrefab.gameObject);
-            _asteroidPool[i].transform.position = _objectGraveyardPosition;
+            _asteroidPool[i].transform.position = ObjectGraveyardPosition;
         }
 
-        _laserPool = new GameObject[LaserPoolSize];
-        _laserCachedPositions = new Vector3[LaserPoolSize];
-        _laserDestructionFlags = new bool[LaserPoolSize];
         for (int i = 0; i < LaserPoolSize; i++)
         {
             _laserPool[i] = Instantiate(_laserBeamPrefab.gameObject);
-            _laserPool[i].transform.position = _objectGraveyardPosition;
-            _laserCachedPositions[i] = _objectGraveyardPosition;
+            _laserPool[i].transform.position = ObjectGraveyardPosition;
         }
     }
 
@@ -741,38 +522,4 @@ public class GameEngine : MonoBehaviour
                     : (i - 127) / 128f; // and from 0 to 1f
     }
     #endregion
-
-    // not written by me, I found it on the Internet
-    // it is around 10 - 15% faster than the Mathf.Sqrt from Unity.Mathematics 
-    // (which probably uses the inverse square root method from Quake 3 based on its cost).
-    // but that comes for a cost of less accurate approximation (from 0.5% to 5% less accurate)
-    float FastSqrt(float number)
-    {
-        if (number == 0)
-            return 0;
-
-        FloatIntUnion u;
-        u.tmp = 0;
-        u.f = number;
-        u.tmp -= 1 << 23; /* Subtract 2^m. */
-        u.tmp >>= 1; /* Divide by 2. */
-        u.tmp += 1 << 29; /* Add ((b + 1) / 2) * 2^m. */
-        return u.f;
-    }
-
-    /// <summary>
-    /// Simple test method to test if the array is sorted properly.
-    /// Useful for potentially dangerous sorting optimizations.
-    /// </summary>
-    bool SortAlgorithmValidityCheck()
-    {
-        for (int i = 0; i < TotalNumberOfAsteroids - 1; i++)
-            if (_asteroids[i].Position.x > _asteroids[i + 1].Position.x)
-            {
-                Debug.LogError("The sorting algorithm is invalid");
-                return false;
-            }
-
-        return true;
-    }
 }
