@@ -1,5 +1,9 @@
 ﻿using System.Threading.Tasks;
+using Unity.Collections;
+using Unity.Entities;
 using Unity.Mathematics;
+using Unity.Rendering;
+using Unity.Transforms;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -14,8 +18,8 @@ public class GameEngine : MonoBehaviour
 
     const float AsteroidSpeedMin = 0.009f; // distance traveled per frame
     const float AsteroidSpeedMax = 0.02f; // distance traveled per frame
-    const int GridDimensionInt = 160;
-    const float GridDimensionFloat = 160;
+    const int GridDimensionInt = 200;
+    const float GridDimensionFloat = 200;
     const int TotalNumberOfAsteroids = GridDimensionInt * GridDimensionInt;
 
     const float PlayerRadius = 0.08f;
@@ -38,9 +42,10 @@ public class GameEngine : MonoBehaviour
     public static readonly Agent[] Agents = new Agent[1 + 6 + TotalNumberOfAsteroids]; // player + total number of lasers
 
     // this is where unused object goes upon death
-    public static readonly Vector3 ObjectGraveyardPosition = new Vector3(-999, -999, 0.3f);
+    public static readonly Vector3 ObjectGraveyardPosition = new Vector3(-999, -999, 3f);
+    public static readonly float3 EntityGraveyardPosition = new float3(-999, -999, 3f);
     public static int NumberOfAsteroidsDestroyedThisFrame;
-    public static bool DidPlayerDiedThisFrame;
+    public static bool DidPlayerDieThisFrame;
 
     #region Private Fields
     // readonly fields and tables
@@ -48,7 +53,6 @@ public class GameEngine : MonoBehaviour
     static readonly float[] _directionLookupTable = new float[256];
 
     // object pools
-    static readonly GameObject[] _asteroidPool = new GameObject[AsteroidPoolSize];
     static readonly GameObject[] _laserPool = new GameObject[LaserPoolSize];
 
     // prefabs
@@ -71,8 +75,51 @@ public class GameEngine : MonoBehaviour
     int _asteroidPoolLastUsedObjectId;
     #endregion
 
+    // ECS related
+    EntityManager _entityManager;
+    [SerializeField] Mesh _mesh;
+    [SerializeField] Material _material;
+    NativeArray<Entity> _entityArray;
+    public static NativeArray<float3> Positions;
+
+    // tag component
+    public struct Asteroid : IComponentData { }
+
     void Start()
     {
+        _entityManager = World.Active.EntityManager;
+        EntityArchetype entityArchetype = _entityManager.CreateArchetype(
+            typeof(RenderMesh), 
+            typeof(LocalToWorld), // how the mesh should be displayed (mandatory in order to be displayed)
+            typeof(Translation), // equivalent of position
+            typeof(Scale), // uniform scale
+            typeof(Asteroid)
+            );
+
+        _entityArray = new NativeArray<Entity>(AsteroidPoolSize, Allocator.Persistent);
+        Positions = new NativeArray<float3>(AsteroidPoolSize, Allocator.Persistent);
+
+        _entityManager.CreateEntity(entityArchetype, _entityArray);
+
+        foreach(Entity entity in _entityArray)
+        {
+            _entityManager.SetSharedComponentData(
+                entity,
+                new RenderMesh
+                {
+                    mesh = _mesh,
+                    material = _material
+                });
+
+            _entityManager.SetComponentData(
+                entity,
+                new Translation { Value = EntityGraveyardPosition });
+
+            _entityManager.SetComponentData(
+                entity,
+                new Scale { Value = 0.6f });
+        }
+
         CreateObjectPools();
         InitializeLookupTables(AsteroidSpeedMin, AsteroidSpeedMax);
         InitializeAsteroidsGridLayout();
@@ -113,6 +160,7 @@ public class GameEngine : MonoBehaviour
     {
         // Transform.position is an accessor and calling it results in a calculation behind the scenes
         // so we cache it for the time of the frame calculation
+
         Vector3 v3 = _playerTransform.position;
         Agents[0].Position = new float2(v3.x, v3.y);
         for (int i = 0; i < LaserPoolSize; i++)
@@ -254,10 +302,10 @@ public class GameEngine : MonoBehaviour
             _playerScoreLabel.text = $"score: {_playerScore}";
         }
 
-        if (DidPlayerDiedThisFrame)
+        if (DidPlayerDieThisFrame)
         {
             GameOver();
-            DidPlayerDiedThisFrame = false;
+            DidPlayerDieThisFrame = false;
         }
 
         // after calculation is done we can assign it back to the transform
@@ -305,8 +353,15 @@ public class GameEngine : MonoBehaviour
         if (Input.GetKey(KeyCode.Escape))
         {
             _testFlag = true;
+            DisposeNativeArrays();
             Application.Quit();
         }
+    }
+
+    void DisposeNativeArrays()
+    {
+        Positions.Dispose();
+        _entityArray.Dispose();
     }
 
     /// <summary>
@@ -476,10 +531,10 @@ public class GameEngine : MonoBehaviour
 
     void ShowVisibleAsteroids()
     {
-        int poolElementIndex = 0;
-
         float playerPosX = Agents[0].Position.x;
         float playerPosY = Agents[0].Position.y;
+
+        int index = 0;
 
         for (int i = 7; i < Agents.Length; i++)
         {
@@ -503,20 +558,12 @@ public class GameEngine : MonoBehaviour
             if (value > FrustumSizeY)
                 continue;
 
-            // take first from the pool
-            _asteroidPool[poolElementIndex++].gameObject.transform.position = new Vector3(
-                a.Position.x,
-                a.Position.y,
-                AsteroidTranformValueZ);
+            Positions[index++] = new float3(a.Position.x, a.Position.y, 3f);
         }
 
         // unused objects go to the graveyard
-        // to avoid multiple reassignment we check if we the number of elements on the screen is lower than frame before
-        if (poolElementIndex < _asteroidPoolLastUsedObjectId)
-            while (poolElementIndex < AsteroidPoolSize)
-                _asteroidPool[poolElementIndex++].transform.position = ObjectGraveyardPosition;
-
-        _asteroidPoolLastUsedObjectId = poolElementIndex;
+        while (index < AsteroidPoolSize)
+            Positions[index++] = EntityGraveyardPosition;
     }
 
     #region Initializers
@@ -548,12 +595,6 @@ public class GameEngine : MonoBehaviour
 
     void CreateObjectPools()
     {
-        for (int i = 0; i < AsteroidPoolSize; i++)
-        {
-            _asteroidPool[i] = Instantiate(_asteroidPrefab.gameObject);
-            _asteroidPool[i].transform.position = ObjectGraveyardPosition;
-        }
-
         for (int i = 0; i < LaserPoolSize; i++)
         {
             _laserPool[i] = Instantiate(_laserBeamPrefab.gameObject);

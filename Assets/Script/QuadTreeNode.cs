@@ -98,7 +98,6 @@ public class QuadTreeNode
     {
         _subDivisionsCreated = true;
 
-        // first subdivision goes differently as we use both negative and positive indexes
         TopLeftQuadrant = new QuadTreeNode(
             _root,
             this,
@@ -805,7 +804,7 @@ public class QuadTreeNode
             else // b is a spaceship
             {
                 b.Flags = 3;
-                GameEngine.DidPlayerDiedThisFrame = true;
+                GameEngine.DidPlayerDieThisFrame = true;
             }
 
             return true;
@@ -825,69 +824,11 @@ public class QuadTreeNode
             // player cannot collide with anything else than an asteroid
             a.Flags = 3; // destroyed spaceship
             b.Flags = 5; // destroyed asteroid
-            GameEngine.DidPlayerDiedThisFrame = true;
+            GameEngine.DidPlayerDieThisFrame = true;
 
             return true;
         }
     }
-
-    //public void MergeEmptyNodes()
-    //{
-    //    if(SubDivisionsCreated)
-    //    {
-    //        var howMany = _permanentList.Count 
-    //            + _movableList.Count
-    //            + TopLeftQuadrant._permanentList.Count
-    //            + TopLeftQuadrant._movableList.Count
-    //            + TopRightQuadrant._permanentList.Count
-    //            + TopRightQuadrant._movableList.Count
-    //            + BottomLeftQuadrant._permanentList.Count
-    //            + BottomLeftQuadrant._movableList.Count
-    //            + BottomRightQuadrant._permanentList.Count
-    //            + BottomRightQuadrant._movableList.Count;
-
-    //        if(howMany < 5)
-    //        {
-    //            // merge the sub quads
-    //            for (int i = 0; i < TopLeftQuadrant._permanentList.Count; i++)
-    //                Add(TopLeftQuadrant._permanentList[i]);
-
-    //            for (int i = 0; i < TopLeftQuadrant._movableList.Count; i++)
-    //                Add(TopLeftQuadrant._movableList[i]);
-
-    //            for (int i = 0; i < TopRightQuadrant._permanentList.Count; i++)
-    //                Add(TopRightQuadrant._permanentList[i]);
-
-    //            for (int i = 0; i < TopRightQuadrant._movableList.Count; i++)
-    //                Add(TopRightQuadrant._movableList[i]);
-
-    //            for (int i = 0; i < BottomLeftQuadrant._permanentList.Count; i++)
-    //                Add(BottomLeftQuadrant._permanentList[i]);
-
-    //            for (int i = 0; i < BottomLeftQuadrant._movableList.Count; i++)
-    //                Add(BottomLeftQuadrant._movableList[i]);
-
-    //            for (int i = 0; i < BottomRightQuadrant._permanentList.Count; i++)
-    //                Add(BottomRightQuadrant._permanentList[i]);
-
-    //            for (int i = 0; i < BottomRightQuadrant._movableList.Count; i++)
-    //                Add(BottomRightQuadrant._movableList[i]);
-
-    //            TopLeftQuadrant = null;
-    //            TopRightQuadrant = null;
-    //            BottomLeftQuadrant = null;
-    //            BottomRightQuadrant = null;
-    //            SubDivisionsCreated = false;
-
-    //            return;
-    //        }
-
-    //        TopLeftQuadrant.MergeNodes();
-    //        TopRightQuadrant.MergeNodes();
-    //        BottomLeftQuadrant.MergeNodes();
-    //        BottomRightQuadrant.MergeNodes();
-    //    }
-    //}
 
     #region Fast Sqrt
     [StructLayout(LayoutKind.Explicit)]
@@ -922,7 +863,6 @@ public class QuadTreeNode
     #region Assertions
     public void NoItermidiateMovablesCheck()
     {
-        //if (_movableList.Count > 0 && SubDivisionsCreated)
         if (_movableElementsCounter > 0 && _subDivisionsCreated)
             Debug.LogError($"The quadnode at depth level {_currentDepth} contains movable elements despite having subdivisions.");
 
