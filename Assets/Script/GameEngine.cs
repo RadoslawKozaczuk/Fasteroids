@@ -10,8 +10,8 @@ using UnityEngine.UI;
 public class GameEngine : MonoBehaviour
 {
     #region Constants
-    const float AsteroidRadius = 0.19f;
-    const float AsteroidRadius2 = AsteroidRadius + AsteroidRadius;
+    public const float AsteroidRadius = 0.19f;
+    public const float AsteroidRadius2 = AsteroidRadius + AsteroidRadius;
     const float AsteroidTranformValueZ = 0.4f;
     const float LaserRadius = 0.07f;
     const float LaserSpeed = 2.5f;
@@ -93,8 +93,7 @@ public class GameEngine : MonoBehaviour
             typeof(LocalToWorld), // how the mesh should be displayed (mandatory in order to be displayed)
             typeof(Translation), // equivalent of position
             typeof(Scale), // uniform scale
-            typeof(Asteroid)
-            );
+            typeof(Asteroid));
 
         _entityArray = new NativeArray<Entity>(AsteroidPoolSize, Allocator.Persistent);
         Positions = new NativeArray<float3>(AsteroidPoolSize, Allocator.Persistent);
@@ -141,9 +140,8 @@ public class GameEngine : MonoBehaviour
                 1_500 + GridDimensionFloat / 2,
                 500 + GridDimensionFloat / 2,
                 1_500 + GridDimensionFloat / 2),
-            20, // this value gave the best performance for 160 x 160
-            10 // this value gave the best performance for 160 x 160
-        );
+            20,
+            10);
 
         _collisionSystem.GenerateQuadTree(Agents);
     }
@@ -174,43 +172,44 @@ public class GameEngine : MonoBehaviour
         #region Production Code
         UpdateAsteroids(); // this also reinserts newly spawned asteroids into the quedtree
         UpdateLasers(); // this also reinserts newly spawned laser beams into the quadtree
-        _collisionSystem.UpdateTreeStructure(); // this does not remove dead elements
+        _collisionSystem.UpdateNode(0); // this does not remove dead elements
 
         // sort elements and check collision in the root node - removing dead elements is done later on
-        _collisionSystem.SortElementsOnlyThisNode();
-        _collisionSystem.CheckCollisionsOnlyThisNode();
+        _collisionSystem.SortElementsOnlyThisNode(0);
+        _collisionSystem.CheckCollisionsOnlyThisNode(0);
 
+        QuadTreeNode rootNode = CollisionSystem.NodeArray[0];
         Task t1 = Task.Factory.StartNew(() =>
         {
-            _collisionSystem.RootNode.TopLeftQuadrant.SortElements();
-            _collisionSystem.RootNode.TopLeftQuadrant.CheckCollisions();
-            _collisionSystem.RootNode.TopLeftQuadrant.RemoveDeadElements();
+            _collisionSystem.SortElements(rootNode.TopLeftNodeIndex);
+            _collisionSystem.CheckCollisions(rootNode.TopLeftNodeIndex);
+            _collisionSystem.RemoveDeadElements(rootNode.TopLeftNodeIndex);
         });
 
         Task t2 = Task.Factory.StartNew(() =>
         {
-            _collisionSystem.RootNode.TopRightQuadrant.SortElements();
-            _collisionSystem.RootNode.TopRightQuadrant.CheckCollisions();
-            _collisionSystem.RootNode.TopRightQuadrant.RemoveDeadElements();
+            _collisionSystem.SortElements(rootNode.TopRightNodeIndex);
+            _collisionSystem.CheckCollisions(rootNode.TopRightNodeIndex);
+            _collisionSystem.RemoveDeadElements(rootNode.TopRightNodeIndex);
         });
 
         Task t3 = Task.Factory.StartNew(() =>
         {
-            _collisionSystem.RootNode.BottomLeftQuadrant.SortElements();
-            _collisionSystem.RootNode.BottomLeftQuadrant.CheckCollisions();
-            _collisionSystem.RootNode.BottomLeftQuadrant.RemoveDeadElements();
+            _collisionSystem.SortElements(rootNode.BottomLeftNodeIndex);
+            _collisionSystem.CheckCollisions(rootNode.BottomLeftNodeIndex);
+            _collisionSystem.RemoveDeadElements(rootNode.BottomLeftNodeIndex);
         });
 
         Task t4 = Task.Factory.StartNew(() =>
         {
-            _collisionSystem.RootNode.BottomRightQuadrant.SortElements();
-            _collisionSystem.RootNode.BottomRightQuadrant.CheckCollisions();
-            _collisionSystem.RootNode.BottomRightQuadrant.RemoveDeadElements();
+            _collisionSystem.SortElements(rootNode.BottomRightNodeIndex);
+            _collisionSystem.CheckCollisions(rootNode.BottomRightNodeIndex);
+            _collisionSystem.RemoveDeadElements(rootNode.BottomRightNodeIndex);
         });
 
         // when we have a free core clean up the root node
         Task.WaitAny(t1, t2, t3, t4);
-        Task t5 = Task.Factory.StartNew(() => _collisionSystem.RemoveDeadElementsOnlyThisNode());
+        Task t5 = Task.Factory.StartNew(() => _collisionSystem.RemoveDeadElementsOnlyThisNode(0));
 
         // wait for all to move forward
         Task.WaitAll(t1, t2, t3, t4, t5);
@@ -393,7 +392,7 @@ public class GameEngine : MonoBehaviour
                     RespawnAsteroid(ref a);
 
                     // insert it back to the collision system
-                    _collisionSystem.RootNode.Add(i);
+                    _collisionSystem.Add(0, i);
                 }
             }
         }
@@ -478,7 +477,7 @@ public class GameEngine : MonoBehaviour
             if (Agents[_laserNextFreeIndex + 1].Flags == 4)
             {
                 Agents[_laserNextFreeIndex + 1].Flags = 1;
-                _collisionSystem.RootNode.Add(_laserNextFreeIndex + 1);
+                _collisionSystem.Add(0, _laserNextFreeIndex + 1);
             }
 
             if (++_laserNextFreeIndex > LaserPoolSize - 1)
@@ -558,7 +557,7 @@ public class GameEngine : MonoBehaviour
             if (value > FrustumSizeY)
                 continue;
 
-            Positions[index++] = new float3(a.Position.x, a.Position.y, 3f);
+            Positions[index++] = new float3(a.Position, 3f);
         }
 
         // unused objects go to the graveyard

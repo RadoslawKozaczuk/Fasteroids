@@ -8,15 +8,15 @@ using Unity.Transforms;
 namespace Assets.Scripts
 {
     [BurstCompile]
-    class AgentRenderSystemWithJobs : JobComponentSystem
+    class AgentRenderSystem : JobComponentSystem
     {
         struct RenderJob : IJobForEachWithEntity<Translation>
         {
             [ReadOnly] public NativeArray<float3> VisiblePositions;
 
-            public void Execute([ReadOnly] Entity entity, [ReadOnly] int index, ref Translation c0)
+            public void Execute([ReadOnly] Entity entity, [ReadOnly] int index, ref Translation translation)
             {
-                c0.Value = VisiblePositions[index];
+                translation.Value = VisiblePositions[index];
             }
         }
 
