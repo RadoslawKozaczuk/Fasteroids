@@ -18,8 +18,8 @@ public class GameEngine : MonoBehaviour
 
     const float AsteroidSpeedMin = 0.009f; // distance traveled per frame
     const float AsteroidSpeedMax = 0.02f; // distance traveled per frame
-    const int GridDimensionInt = 200;
-    const float GridDimensionFloat = 200;
+    const int GridDimensionInt = 220;
+    const float GridDimensionFloat = 220;
     const int TotalNumberOfAsteroids = GridDimensionInt * GridDimensionInt;
 
     const float PlayerRadius = 0.08f;
@@ -141,9 +141,10 @@ public class GameEngine : MonoBehaviour
                 500 + GridDimensionFloat / 2,
                 1_500 + GridDimensionFloat / 2),
             20,
-            10);
+            10,
+            5);
 
-        _collisionSystem.GenerateQuadTree(Agents);
+        _collisionSystem.AddElementsToQuadTree(Agents);
     }
 
     // test related
@@ -523,9 +524,10 @@ public class GameEngine : MonoBehaviour
                 500 + GridDimensionFloat / 2,
                 1_500 + GridDimensionFloat / 2),
             20,
-            10);
+            10,
+            5);
 
-        _collisionSystem.GenerateQuadTree(Agents);
+        _collisionSystem.AddElementsToQuadTree(Agents);
     }
 
     void ShowVisibleAsteroids()

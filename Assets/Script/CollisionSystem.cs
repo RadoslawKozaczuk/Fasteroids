@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Unity.Mathematics;
 
 public class CollisionSystem
@@ -10,19 +11,36 @@ public class CollisionSystem
         public int Compare(int a, int b) => GameEngine.Agents[a].Position.x >= GameEngine.Agents[b].Position.x ? 1 : -1;
     }
 
-    public static QuadTreeNode[] NodeArray = new QuadTreeNode[4500];
+    public static QuadTreeNode[] NodeArray = new QuadTreeNode[6000];
     public static int MaxEntitiesPerQuad;
     public static int InitialPermaTableLength;
     readonly AgentComparer _agentComparer = new AgentComparer();
     int _nodeArrayCounter = 0;
+    object _createNodeLock = new object();
 
-    public CollisionSystem(in Quad boundaries, int maxEntitiesPerQuad, int initialPermaTableLength)
+    public CollisionSystem(in Quad boundaries, int maxEntitiesPerQuad, int initialPermaTableLength, int initialSubDivisionLevel = 0)
     {
         InitialPermaTableLength = initialPermaTableLength;
         MaxEntitiesPerQuad = maxEntitiesPerQuad;
 
         // create root node
         NodeArray[_nodeArrayCounter++] = new QuadTreeNode(in boundaries, 0);
+
+        CreateInitialSubdivisions(initialSubDivisionLevel);
+    }
+
+    void CreateInitialSubdivisions(int level)
+    {
+        int multiplier = 4;
+        int nodesToCreate = 1;
+        for (int i = 1; i < level; i++)
+        {
+            nodesToCreate += multiplier;
+            multiplier *= 4;
+        }
+
+        for (int i = 0; i < nodesToCreate; i++)
+            CreateSubdivisions(i);
     }
 
     /// <summary>
@@ -31,21 +49,89 @@ public class CollisionSystem
     public int CreateNode(in Quad boundaries, int parentNodeIndex)
     {
         // for now without safety checks
-        NodeArray[_nodeArrayCounter] = new QuadTreeNode(in boundaries, parentNodeIndex);
-        _nodeArrayCounter++;
-        return _nodeArrayCounter - 1;
+        lock(_createNodeLock)
+        {
+            NodeArray[_nodeArrayCounter] = new QuadTreeNode(in boundaries, parentNodeIndex);
+            _nodeArrayCounter++;
+            return _nodeArrayCounter - 1;
+        }
     }
 
-    public void GenerateQuadTree(Agent[] asteroids)
+    public void AddElementsToQuadTree(Agent[] asteroids)
     {
-        CreateSubdivisions(0);
+        var tlList = new List<int>(asteroids.Length / 4);
+        var trList = new List<int>(asteroids.Length / 4);
+        var blList = new List<int>(asteroids.Length / 4);
+        var brList = new List<int>(asteroids.Length / 4);
+
+        ref QuadTreeNode rootNode = ref NodeArray[0];
+        int tlIndex = rootNode.TopLeftNodeIndex;
+        int trIndex = rootNode.TopRightNodeIndex;
+        int blIndex = rootNode.BottomLeftNodeIndex;
+        int brIndex = rootNode.BottomRightNodeIndex;
 
         for (int i = 0; i < asteroids.Length; i++)
         {
             // dead elements are not added to the tree
             if (GameEngine.Agents[i].Flags < 3)
-                Add(0, i);
+            {
+                float2 pos = GameEngine.Agents[i].Position;
+
+                // if can be added to the root perma table do it
+                if (rootNode.TooCloseToDivisionalLines(pos.x, pos.y))
+                {
+                    // add to root's perma table
+                    rootNode.AddToPermaTable(i);
+                }
+                // otherwise add it to one of the four insertion lists
+                else
+                {
+                    if (pos.x >= rootNode.DivisionLineX)
+                    {
+                        // right side
+                        if (pos.y >= rootNode.DivisionLineY)
+                            trList.Add(i);
+                        else
+                            brList.Add(i);
+                    }
+                    else
+                    {
+                        // left side
+                        if (pos.y >= rootNode.DivisionLineY)
+                            tlList.Add(i);
+                        else
+                            blList.Add(i);
+                    }
+                }
+            }
         }
+
+        // then run each list on a different core
+        Task t1 = Task.Factory.StartNew(() =>
+        {
+            for (int i = 0; i < tlList.Count; i++)
+                Add(tlIndex, tlList[i]);
+        });
+
+        Task t2 = Task.Factory.StartNew(() =>
+        {
+            for (int i = 0; i < trList.Count; i++)
+                Add(trIndex, trList[i]);
+        });
+
+        Task t3 = Task.Factory.StartNew(() =>
+        {
+            for (int i = 0; i < blList.Count; i++)
+                Add(blIndex, blList[i]);
+        });
+
+        Task t4 = Task.Factory.StartNew(() =>
+        {
+            for (int i = 0; i < brList.Count; i++)
+                Add(brIndex, brList[i]);
+        });
+
+        Task.WaitAll(t1, t2, t3, t4);
     }
 
     public void Add(int targetNodeIndex, int agentId)
@@ -55,20 +141,7 @@ public class CollisionSystem
         // first check if the element can not be put in subdivision due to its proximity to the division lines
         if (node.TooCloseToDivisionalLines(GameEngine.Agents[agentId].Position.x, GameEngine.Agents[agentId].Position.y))
         {
-            // add to perma list
-            node.PermanentTable[node.PermanentElementsCounter++] = agentId;
-
-            // resize the table
-            if (node.PermanentElementsCounter == node.PermanentTable.Length)
-            {
-                // use array copy as it is faster and safer
-                int[] tempTable = new int[node.PermanentElementsCounter];
-                Buffer.BlockCopy(node.PermanentTable, 0, tempTable, 0, node.PermanentElementsCounter * 4);
-
-                node.PermanentTable = new int[node.PermanentElementsCounter * 2];
-                Buffer.BlockCopy(tempTable, 0, node.PermanentTable, 0, node.PermanentElementsCounter * 4);
-            }
-
+            node.AddToPermaTable(agentId);
             return;
         }
 
@@ -199,9 +272,7 @@ public class CollisionSystem
         {
             if (GameEngine.Agents[node.PermanentTable[i]].Flags > 2) // dead
             {
-                // remove from the tree structure
-                if (i < --node.PermanentElementsCounter)
-                    node.PermanentTable[i] = node.PermanentTable[node.PermanentElementsCounter];
+                node.RemoveFromPermaTable(i);
                 continue;
             }
             i++;
@@ -212,9 +283,7 @@ public class CollisionSystem
         {
             if (GameEngine.Agents[node.MovableTable[i]].Flags > 2) // dead
             {
-                // remove from the tree structure
-                if (i < --node.MovableElementsCounter)
-                    node.MovableTable[i] = node.MovableTable[node.MovableElementsCounter];
+                node.RemoveFromMovableTable(i);
                 continue;
             }
             i++;
@@ -242,9 +311,7 @@ public class CollisionSystem
         {
             if (GameEngine.Agents[node.PermanentTable[i]].Flags > 2) // dead
             {
-                // remove from the tree structure
-                if (i < --node.PermanentElementsCounter)
-                    node.PermanentTable[i] = node.PermanentTable[node.PermanentElementsCounter];
+                node.RemoveFromPermaTable(i);
                 continue;
             }
             i++;
@@ -255,9 +322,7 @@ public class CollisionSystem
         {
             if (GameEngine.Agents[node.MovableTable[i]].Flags > 2) // dead
             {
-                // remove from the tree structure
-                if (i < --node.MovableElementsCounter)
-                    node.MovableTable[i] = node.MovableTable[node.MovableElementsCounter];
+                node.RemoveFromMovableTable(i);
                 continue;
             }
             i++;
@@ -288,10 +353,7 @@ public class CollisionSystem
             // no longer in the quad
             if (!node.WithingBoundaries(in node.Boundaries, a.Position))
             {
-                // remove from perm by inserting the last one on current spot
-                if (i < --node.PermanentElementsCounter)
-                    node.PermanentTable[i] = node.PermanentTable[node.PermanentElementsCounter];
-
+                node.RemoveFromPermaTable(i);
                 AddFromBottom(node.ParentNodeIndex, permaObjectId);
                 continue;
             }
@@ -315,11 +377,7 @@ public class CollisionSystem
                         AddToSubQuad(targetNodeIndex, node.MovableTable[--node.MovableElementsCounter]); // go from the end to the start
                 }
 
-                // if this is the last one simply decrease the counter
-                // otherwise put the last one's value in the i's spot and decrease the counter by 1
-                if (i < --node.PermanentElementsCounter)
-                    node.PermanentTable[i] = node.PermanentTable[node.PermanentElementsCounter];
-
+                node.RemoveFromPermaTable(i);
                 continue;
             }
 
@@ -341,11 +399,7 @@ public class CollisionSystem
             // are you still in this quad?
             if (!node.WithingBoundaries(in node.Boundaries, a.Position))
             {
-                // if this is the last one simply decrease the counter
-                // otherwise put the last one's value in the i's spot and decrease the counter by 1
-                if (i < --node.MovableElementsCounter)
-                    node.MovableTable[i] = node.MovableTable[node.MovableElementsCounter];
-
+                node.RemoveFromMovableTable(i);
                 AddFromBottom(node.ParentNodeIndex, movaObjectId);
                 continue;
             }
@@ -353,25 +407,8 @@ public class CollisionSystem
             // got to close to the division lines
             if (node.TooCloseToDivisionalLines(a.Position.x, a.Position.y))
             {
-                // add to perma list
-                node.PermanentTable[node.PermanentElementsCounter++] = movaObjectId;
-
-                // resize the table if necessary
-                if (node.PermanentElementsCounter == node.PermanentTable.Length)
-                {
-                    // extend the table two times
-                    int[] tempTable = new int[node.PermanentElementsCounter];
-                    Buffer.BlockCopy(node.PermanentTable, 0, tempTable, 0, node.PermanentElementsCounter * 4);
-
-                    node.PermanentTable = new int[node.PermanentElementsCounter * 2];
-                    Buffer.BlockCopy(tempTable, 0, node.PermanentTable, 0, node.PermanentElementsCounter * 4);
-                }
-
-                // if this is the last one simply decrease the counter
-                // otherwise put the last one's value in the i's spot and decrease the counter by 1
-                if (i < --node.MovableElementsCounter)
-                    node.MovableTable[i] = node.MovableTable[node.MovableElementsCounter];
-
+                node.AddToPermaTable(movaObjectId);
+                node.RemoveFromMovableTable(i);
                 continue;
             }
 

@@ -1,4 +1,6 @@
-﻿using Unity.Mathematics;
+﻿using System;
+using System.Runtime.CompilerServices;
+using Unity.Mathematics;
 
 public struct QuadTreeNode
 {
@@ -67,6 +69,41 @@ public struct QuadTreeNode
         && position.x <= boundaries.MaxX
         && position.y >= boundaries.MinY
         && position.y <= boundaries.MaxY;
+
+    public void AddToPermaTable(int agentId)
+    {
+        // add to perma list
+        PermanentTable[PermanentElementsCounter++] = agentId;
+
+        // resize the table if necessary
+        if (PermanentElementsCounter == PermanentTable.Length)
+        {
+            // use array copy as it is faster and safer
+            int[] tempTable = new int[PermanentElementsCounter];
+            Array.Copy(PermanentTable, tempTable, PermanentElementsCounter);
+            
+            PermanentTable = new int[PermanentElementsCounter * 2];
+            Array.Copy(tempTable, PermanentTable, PermanentElementsCounter);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void RemoveFromPermaTable(int agentId)
+    {
+        // if this is the last one simply decrease the counter
+        // otherwise put the last one's value in the i's spot and decrease the counter by 1
+        if (agentId < --PermanentElementsCounter)
+            PermanentTable[agentId] = PermanentTable[PermanentElementsCounter];
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void RemoveFromMovableTable(int agentId)
+    {
+        // if this is the last one simply decrease the counter
+        // otherwise put the last one's value in the i's spot and decrease the counter by 1
+        if (agentId < --MovableElementsCounter)
+            MovableTable[agentId] = MovableTable[MovableElementsCounter];
+    }
 
     #region Assertions
     //public void NoItermidiateMovablesCheck()
