@@ -10,7 +10,7 @@ public class PlayerInputSystem : ComponentSystem
 
     protected override void OnCreate()
     {
-        // operate only on entities that have these two components
+        // operate only on entities that have these three components
         _query = GetEntityQuery(
             ComponentType.ReadOnly<Spaceship>(), 
             ComponentType.ReadWrite<Rotation>(), 

@@ -17,8 +17,8 @@ public class GameEngine : MonoBehaviour
 
     const float AsteroidSpeedMin = 0.009f; // distance traveled per frame
     const float AsteroidSpeedMax = 0.02f; // distance traveled per frame
-    const int GridDimensionInt = 240;
-    const float GridDimensionFloat = 240;
+    public const int GridDimensionInt = 200;
+    public const float GridDimensionFloat = 200;
     const int TotalNumberOfAsteroids = GridDimensionInt * GridDimensionInt;
 
     const float PlayerRadius = 0.08f;
@@ -28,15 +28,17 @@ public class GameEngine : MonoBehaviour
     const float AsteroidPlayerRadius = AsteroidRadius + PlayerRadius; // to reduce number of additions
     const float AsteroidLaserRadius = AsteroidRadius + LaserRadius; // to reduce number of additions
 
-    const float WorldOffetValue = 1000f; // we move world top right to be sure we operate on positive numbers
+    public const float WorldOffetValue = 1000f; // we move world top right to be sure we operate on positive numbers
 
     // pool sizes
     const int AsteroidPoolSize = 40; // in tests this never went above 35 so for safety i gave 5 more
     const int LaserPoolSize = 6; // we shot once per 0.5 frame and the lifetime is 3s
 
-    const float FrustumSizeX = 3.8f;
-    const float FrustumSizeY = 2.3f;
+    public const float FrustumSizeX = 3.8f;
+    public const float FrustumSizeY = 2.3f;
     #endregion
+
+    public static GameEngine Instance { get; private set; }
 
     //public static readonly Agent[] Agents = new Agent[1 + 6 + TotalNumberOfAsteroids]; // player + total number of lasers
 
@@ -45,11 +47,7 @@ public class GameEngine : MonoBehaviour
 
     #region Private Fields
     // readonly fields and tables
-    static readonly float[] _speedLookupTable = new float[256];
-    static readonly float[] _directionLookupTable = new float[256];
-
     // object pools
-    static readonly GameObject[] _laserPool = new GameObject[LaserPoolSize];
 
     // prefabs
     [SerializeField] GameObject _asteroidPrefab;
@@ -62,7 +60,6 @@ public class GameEngine : MonoBehaviour
     [SerializeField] Button _restartButton;
     [SerializeField] Text _youLoseLabel;
 
-    CollisionSystem _collisionSystem;
     Transform _playerTransform;
     float _timeToFireNextLaser = 0.5f;
     int _laserNextFreeIndex;
@@ -73,10 +70,10 @@ public class GameEngine : MonoBehaviour
 
     // ECS related
     EntityManager _entityManager;
-    [SerializeField] Mesh _mesh;
+    public Mesh _mesh;
     [SerializeField] Material _spaceshipMaterial;
     [SerializeField] Material _laserBeamMaterial;
-    [SerializeField] Material _asteroidMaterial;
+    public Material _asteroidMaterial;
     NativeArray<Entity> _spaceshipArray;
     NativeArray<Entity> _laserBeamArray;
     NativeArray<Entity> _asteroidArray;
@@ -93,19 +90,24 @@ public class GameEngine : MonoBehaviour
         public float Speed;
     }
 
-    //public struct DeadData : IComponentData
-    //{
+    public struct TimeToRespawn : IComponentData
+    {
+        public float Time;
+    }
 
-    //}
+    // some entities should not be destroyed upon death and just marked instead
+    // for example player - camera follows him even if he's dead
+    public struct DeadData : IComponentData { }
 
+    public static EntityArchetype AsteroidArchetype;
 
-    public static NativeList<float> RespawnList;
+    private void Awake() => Instance = this;
 
     void Start()
     {
         _entityManager = World.Active.EntityManager;
 
-        EntityArchetype asteroidArchetyoe = _entityManager.CreateArchetype(
+        AsteroidArchetype = _entityManager.CreateArchetype(
             typeof(RenderMesh), 
             typeof(LocalToWorld), // how the mesh should be displayed (mandatory in order to be displayed)
             typeof(Translation), // equivalent of position
@@ -113,7 +115,7 @@ public class GameEngine : MonoBehaviour
             typeof(MoveSpeed),
             typeof(Asteroid));
 
-        EntityArchetype spaceshipArchetyoe = _entityManager.CreateArchetype(
+        EntityArchetype spaceshipArchetype = _entityManager.CreateArchetype(
             typeof(RenderMesh),
             typeof(LocalToWorld), // how the mesh should be displayed (mandatory in order to be displayed)
             typeof(Translation), // equivalent of position
@@ -127,7 +129,7 @@ public class GameEngine : MonoBehaviour
         //_laserBeamArray = new NativeArray<Entity>(6, Allocator.Persistent);
         _asteroidArray = new NativeArray<Entity>(TotalNumberOfAsteroids, Allocator.Persistent);
 
-        _entityManager.CreateEntity(asteroidArchetyoe, _asteroidArray); // fill the table with entities
+        _entityManager.CreateEntity(AsteroidArchetype, _asteroidArray); // fill the table with entities
 
         // initialize asteroids
         int i = 0;
@@ -161,7 +163,7 @@ public class GameEngine : MonoBehaviour
                     });
             }
 
-        _entityManager.CreateEntity(spaceshipArchetyoe, _spaceshipArray); // fill the table with entities
+        _entityManager.CreateEntity(spaceshipArchetype, _spaceshipArray); // fill the table with entities
 
         // initialize spaceship
         Entity spaceship = _spaceshipArray[0];
@@ -286,82 +288,6 @@ public class GameEngine : MonoBehaviour
         //ShowVisibleAsteroids();
         #endregion
 
-        #region Performance Test Code
-        //if (_framesPassed > 100) _swUpdate.Start();
-        //UpdateAsteroids();
-        //UpdateLasers();
-        //if (_framesPassed > 100) _swUpdate.Stop();
-
-        //if (_framesPassed > 100) _swUpdateTree.Start();
-        //_collisionSystem.UpdateTreeStructure();
-        //if (_framesPassed > 100) _swUpdateTree.Stop();
-
-        //if (_framesPassed > 100) _swCollisions.Start();
-        //_collisionSystem.RootNode.SortElementsOnlyThisNode();
-        //_collisionSystem.RootNode.CheckCollisionsOnlyThisNode();
-
-        //Task t1 = Task.Factory.StartNew(() =>
-        //{
-        //    _collisionSystem.RootNode.TopLeftQuadrant.SortElements();
-        //    _collisionSystem.RootNode.TopLeftQuadrant.CheckCollisions();
-        //    _collisionSystem.RootNode.TopLeftQuadrant.RemoveDeadElements();
-        //});
-
-        //Task t2 = Task.Factory.StartNew(() =>
-        //{
-        //    _collisionSystem.RootNode.TopRightQuadrant.SortElements();
-        //    _collisionSystem.RootNode.TopRightQuadrant.CheckCollisions();
-        //    _collisionSystem.RootNode.TopRightQuadrant.RemoveDeadElements();
-        //});
-
-        //Task t3 = Task.Factory.StartNew(() =>
-        //{
-        //    _collisionSystem.RootNode.BottomLeftQuadrant.SortElements();
-        //    _collisionSystem.RootNode.BottomLeftQuadrant.CheckCollisions();
-        //    _collisionSystem.RootNode.BottomLeftQuadrant.RemoveDeadElements();
-        //});
-
-        //Task t4 = Task.Factory.StartNew(() =>
-        //{
-        //    _collisionSystem.RootNode.BottomRightQuadrant.SortElements();
-        //    _collisionSystem.RootNode.BottomRightQuadrant.CheckCollisions();
-        //    _collisionSystem.RootNode.BottomRightQuadrant.RemoveDeadElements();
-        //});
-
-        //// if anyone finish give cleaning the root node task
-        //Task.WaitAny(t1, t2, t3, t4);
-        //Task t5 = Task.Factory.StartNew(() => _collisionSystem.RootNode.RemoveDeadElementsOnlyThisNode());
-
-        //// wait for all to finish
-        //Task.WaitAll(t1, t2, t3, t4, t5);
-        //if (_framesPassed > 100) _swCollisions.Stop();
-
-        //// assert: no dead ones in the hierarchy at this point
-        //_collisionSystem.RootNode.NoDeadAgentsCheck();
-        //// assert: intermediate nodes has their movable tables empty
-        //_collisionSystem.RootNode.NoItermidiateMovablesCheck();
-        //// assert: the number of live agents in the global table and in the hierarchy are equal
-        //_collisionSystem.RootNode.AgentsNumberCoherencyCheck();
-
-        //if (_framesPassed > 100) _swVisible.Start();
-        //ShowVisibleAsteroids();
-        //if (_framesPassed > 100) _swVisible.Stop();
-
-        //_framesPassed++;
-        //if (_testFlag)
-        //{
-        //    _testFlag = false;
-
-        //    long avgTicksUpdate = _swUpdate.ElapsedTicks / (_framesPassed - 100);
-        //    long avgTicksUpdateTree = _swUpdateTree.ElapsedTicks / (_framesPassed - 100);
-        //    long avgTicksCollisions = _swCollisions.ElapsedTicks / (_framesPassed - 100);
-        //    long avgTickVisible = _swVisible.ElapsedTicks / (_framesPassed - 100);
-        //    long totalTicks = avgTicksUpdate + avgTicksUpdateTree + avgTicksCollisions + avgTickVisible;
-
-        //    System.Diagnostics.Debugger.Break();
-        //}
-        #endregion
-
         //// handling multi threaded output
         //if (NumberOfAsteroidsDestroyedThisFrame > 0)
         //{
@@ -391,33 +317,6 @@ public class GameEngine : MonoBehaviour
 
     void HandleInput()
     {
-        if (!_playerDestroyed)
-        {
-            //ref Agent player = ref Agents[0];
-            //bool movingBackwards = false;
-
-            //if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow))
-            //{
-            //    Vector3 newPostion = new Vector3(player.Position.x, player.Position.y, 0.3f)
-            //        + _playerTransform.up * Time.deltaTime * PlayerSpeed;
-            //    player.Position = new float2(newPostion.x, newPostion.y);
-            //}
-            //else if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow))
-            //{
-            //    Vector3 newPostion = new Vector3(player.Position.x, player.Position.y, 0.3f)
-            //        - _playerTransform.up * Time.deltaTime * PlayerSpeed;
-            //    player.Position = new float2(newPostion.x, newPostion.y);
-
-            //    movingBackwards = true;
-            //}
-
-            //// when moving backwards rotation is reverse to make it more natural
-            //if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow))
-            //    _playerTransform.Rotate(new Vector3(0, 0, movingBackwards ? -PlayerRotationFactor : PlayerRotationFactor));
-            //else if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow))
-            //    _playerTransform.Rotate(new Vector3(0, 0, movingBackwards ? PlayerRotationFactor : -PlayerRotationFactor));
-        }
-
         if (Input.GetKey(KeyCode.Escape))
         {
             _testFlag = true;
@@ -466,49 +365,6 @@ public class GameEngine : MonoBehaviour
         //    }
         //}
     }
-
-    //void RespawnAsteroid(ref Agent a)
-    //{
-    //        float2 playerPosition = new float2(0, 0);// Agents[0].Position;
-
-    //    // iterate until you find a position outside of player's frustum
-    //    // it is not the most mathematically correct solution
-    //    // as the asteroids dispersion will not be even (those that normally would spawn inside the frustum 
-    //    // will spawn right next to the frustum's edge instead)
-    //    float posX = UnityEngine.Random.Range(0, GridDimensionFloat) + WorldOffetValue;
-    //    if (posX > playerPosition.x)
-    //    {
-    //        // tried to spawn on the right side of the player
-    //        if (posX - playerPosition.x < FrustumSizeX)
-    //            posX += FrustumSizeX;
-    //    }
-    //    else
-    //    {
-    //        // left side
-    //        if (playerPosition.x - posX < FrustumSizeX)
-    //            posX -= FrustumSizeX;
-    //    }
-
-    //    float posY = UnityEngine.Random.Range(0, GridDimensionFloat) + WorldOffetValue;
-    //    if (posY > playerPosition.y)
-    //    {
-    //        // tried to spawn above the player
-    //        if (posY - playerPosition.y < FrustumSizeY)
-    //            posY += FrustumSizeY;
-    //    }
-    //    else
-    //    {
-    //        // below
-    //        if (playerPosition.y - posX < FrustumSizeY)
-    //            posY -= FrustumSizeY;
-    //    }
-
-    //    // respawn
-    //    a.Position = new float2(posX, posY);
-    //    a.DirectionX = (byte)UnityEngine.Random.Range(0, 256);
-    //    a.DirectionY = (byte)UnityEngine.Random.Range(0, 256);
-    //    a.Flags = 2; // normal state for a living asteroid
-    //}
 
     /// <summary>
     /// Changes the lasers position and respawn them if necessary.
@@ -604,7 +460,7 @@ public class GameEngine : MonoBehaviour
     {
         for (int i = 0; i < LaserPoolSize; i++)
         {
-            _laserPool[i] = Instantiate(_laserBeamPrefab.gameObject);
+            //_laserPool[i] = Instantiate(_laserBeamPrefab.gameObject);
             //_laserPool[i].transform.position = ObjectGraveyardPosition;
         }
     }

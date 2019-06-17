@@ -5,18 +5,10 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using Unity.Transforms;
 
-public struct QuadrantEntity : IComponentData
-{
-    public enum TypeEnum { Spaceship, LaserBeam, Asteroid }
-
-    public TypeEnum Type;
-}
-
 public struct QuadrantData
 {
     public Entity Entity;
     public float3 EntityPosition;
-    public QuadrantEntity QuadrantEntity;
 }
 
 class QuadrantSystem : ComponentSystem
@@ -24,12 +16,10 @@ class QuadrantSystem : ComponentSystem
     const int QuadrantMultiplier = 10_000; // how many quadrants we can have per row
     const int QuadrantCellSize = 4;
 
-    public static NativeMultiHashMap<int, QuadrantData> multiHashMap;
+    public static NativeMultiHashMap<int, QuadrantData> MultiHashMap;
 
-    public static int GetPositionHashMapKey(float3 position)
-    {
-        return (int)(math.floor(position.x / QuadrantCellSize) + (QuadrantMultiplier * math.floor(position.y / QuadrantCellSize)));
-    }
+    public static int GetPositionHashMapKey(float3 position) 
+        => (int)(math.floor(position.x / QuadrantCellSize) + (QuadrantMultiplier * math.floor(position.y / QuadrantCellSize)));
 
     [BurstCompile]
     struct SetQuadrantHashMapDataJob : IJobForEachWithEntity<Translation>
@@ -47,13 +37,13 @@ class QuadrantSystem : ComponentSystem
 
     protected override void OnCreate()
     {
-        multiHashMap = new NativeMultiHashMap<int, QuadrantData>(0, Allocator.Persistent);
+        MultiHashMap = new NativeMultiHashMap<int, QuadrantData>(0, Allocator.Persistent);
         base.OnCreate();
     }
 
     protected override void OnDestroy()
     {
-        multiHashMap.Dispose();
+        MultiHashMap.Dispose();
         base.OnDestroy();
     }
 
@@ -61,14 +51,14 @@ class QuadrantSystem : ComponentSystem
     {
         EntityQuery entityQuery = GetEntityQuery(typeof(Translation));
 
-        multiHashMap.Clear(); // need to be cleared because it is persistent
+        MultiHashMap.Clear(); // need to be cleared because it is persistent
 
         // adjust its size to match the current needs
         int entityNumber = entityQuery.CalculateLength();
-        if (entityNumber > multiHashMap.Capacity)
-            multiHashMap.Capacity = entityNumber;
+        if (entityNumber > MultiHashMap.Capacity)
+            MultiHashMap.Capacity = entityNumber;
 
-        var setQuadrantDataHashMapJob = new SetQuadrantHashMapDataJob { NativeMultiHashMap = multiHashMap.ToConcurrent() };
+        var setQuadrantDataHashMapJob = new SetQuadrantHashMapDataJob { NativeMultiHashMap = MultiHashMap.ToConcurrent() };
 
         JobHandle jobHandle = JobForEachExtensions.Schedule(setQuadrantDataHashMapJob, entityQuery);
         jobHandle.Complete();
