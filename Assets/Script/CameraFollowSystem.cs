@@ -11,7 +11,7 @@ public class CameraFollowSystem : ComponentSystem
     protected override void OnCreate() 
         => _query = GetEntityQuery(
             ComponentType.ReadOnly<Translation>(), 
-            ComponentType.ReadOnly<Spaceship>());
+            ComponentType.ReadOnly<SpaceshipData>());
 
     protected override void OnUpdate()
     {

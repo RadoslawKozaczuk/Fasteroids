@@ -9,6 +9,7 @@ public struct QuadrantData
 {
     public Entity Entity;
     public float3 EntityPosition;
+    public GameEngine.CollisionTypeEnum CollisionTypeEnum;
 }
 
 class QuadrantSystem : ComponentSystem
@@ -22,16 +23,25 @@ class QuadrantSystem : ComponentSystem
         => (int)(math.floor(position.x / QuadrantCellSize) + (QuadrantMultiplier * math.floor(position.y / QuadrantCellSize)));
 
     [BurstCompile]
-    struct SetQuadrantHashMapDataJob : IJobForEachWithEntity<Translation>
+    struct SetQuadrantHashMapDataJob : IJobForEachWithEntity<Translation, GameEngine.CollisionTypeData>
     {
         public NativeMultiHashMap<int, QuadrantData>.Concurrent NativeMultiHashMap;
 
-        public void Execute([ReadOnly] Entity entity, [ReadOnly] int index, ref Translation translation)
+        public void Execute(
+            [ReadOnly] Entity entity, 
+            [ReadOnly] int index, 
+            [ReadOnly] ref Translation translation,
+            [ReadOnly] ref GameEngine.CollisionTypeData collisionType)
         {
             int hashMapKey = GetPositionHashMapKey(translation.Value);
             NativeMultiHashMap.Add(
                 hashMapKey, 
-                new QuadrantData { Entity = entity, EntityPosition = translation.Value });
+                new QuadrantData
+                {
+                    Entity = entity,
+                    EntityPosition = translation.Value,
+                    CollisionTypeEnum = collisionType.CollisionObjectType
+                });
         }
     }
 
@@ -49,7 +59,9 @@ class QuadrantSystem : ComponentSystem
 
     protected override void OnUpdate()
     {
-        EntityQuery entityQuery = GetEntityQuery(typeof(Translation));
+        EntityQuery entityQuery = GetEntityQuery(
+            typeof(Translation),
+            typeof(GameEngine.CollisionTypeData));
 
         MultiHashMap.Clear(); // need to be cleared because it is persistent
 

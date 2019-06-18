@@ -335,10 +335,10 @@ MonoBehaviour:
   _mainCamera: {fileID: 519420031}
   _restartButton: {fileID: 1388927302}
   _youLoseLabel: {fileID: 1499069365}
-  _mesh: {fileID: 10210, guid: 0000000000000000e000000000000000, type: 0}
-  _spaceshipMaterial: {fileID: 2100000, guid: d146508f0a440ef439b1d048a4994d2f, type: 2}
-  _laserBeamMaterial: {fileID: 2100000, guid: 86cd888e9435fad4b99e9f0958a353bd, type: 2}
-  _asteroidMaterial: {fileID: 2100000, guid: 4a70b82959ec7a549937e01a41a640a4, type: 2}
+  Mesh: {fileID: 10210, guid: 0000000000000000e000000000000000, type: 0}
+  SpaceshipMaterial: {fileID: 2100000, guid: d146508f0a440ef439b1d048a4994d2f, type: 2}
+  LaserBeamMaterial: {fileID: 2100000, guid: 86cd888e9435fad4b99e9f0958a353bd, type: 2}
+  AsteroidMaterial: {fileID: 2100000, guid: 4a70b82959ec7a549937e01a41a640a4, type: 2}
 --- !u!4 &528744136
 Transform:
   m_ObjectHideFlags: 0

@@ -8,6 +8,8 @@ using UnityEngine.UI;
 
 public class GameEngine : MonoBehaviour
 {
+    public enum CollisionTypeEnum { Player, Laser, Asteroid }
+
     #region Constants
     public const float AsteroidRadius = 0.19f;
     public const float AsteroidRadius2 = AsteroidRadius + AsteroidRadius;
@@ -17,8 +19,8 @@ public class GameEngine : MonoBehaviour
 
     const float AsteroidSpeedMin = 0.009f; // distance traveled per frame
     const float AsteroidSpeedMax = 0.02f; // distance traveled per frame
-    public const int GridDimensionInt = 200;
-    public const float GridDimensionFloat = 200;
+    public const int GridDimensionInt = 180;
+    public const float GridDimensionFloat = 180;
     const int TotalNumberOfAsteroids = GridDimensionInt * GridDimensionInt;
 
     const float PlayerRadius = 0.08f;
@@ -39,8 +41,6 @@ public class GameEngine : MonoBehaviour
     #endregion
 
     public static GameEngine Instance { get; private set; }
-
-    //public static readonly Agent[] Agents = new Agent[1 + 6 + TotalNumberOfAsteroids]; // player + total number of lasers
 
     public static int NumberOfAsteroidsDestroyedThisFrame;
     public static bool DidPlayerDieThisFrame;
@@ -69,19 +69,25 @@ public class GameEngine : MonoBehaviour
     #endregion
 
     // ECS related
-    EntityManager _entityManager;
-    public Mesh _mesh;
-    [SerializeField] Material _spaceshipMaterial;
-    [SerializeField] Material _laserBeamMaterial;
-    public Material _asteroidMaterial;
+    public EntityManager EntityManager;
+    public Mesh Mesh;
+    public Material SpaceshipMaterial;
+    public Material LaserBeamMaterial;
+    public Material AsteroidMaterial;
     NativeArray<Entity> _spaceshipArray;
     NativeArray<Entity> _laserBeamArray;
     NativeArray<Entity> _asteroidArray;
 
     // tag component
-    public struct Spaceship : IComponentData { }
-    public struct LaserBeam : IComponentData { }
-    public struct Asteroid : IComponentData { }
+    public struct SpaceshipData : IComponentData
+    {
+        public float TimeToFireLaser;
+    }
+
+    public struct CollisionTypeData : IComponentData
+    {
+        public CollisionTypeEnum CollisionObjectType;
+    }
 
     public struct MoveSpeed : IComponentData
     {
@@ -100,28 +106,38 @@ public class GameEngine : MonoBehaviour
     public struct DeadData : IComponentData { }
 
     public static EntityArchetype AsteroidArchetype;
+    public static EntityArchetype LaserBeamArchetype;
 
     private void Awake() => Instance = this;
 
     void Start()
     {
-        _entityManager = World.Active.EntityManager;
+        EntityManager = World.Active.EntityManager;
 
-        AsteroidArchetype = _entityManager.CreateArchetype(
+        AsteroidArchetype = EntityManager.CreateArchetype(
             typeof(RenderMesh), 
             typeof(LocalToWorld), // how the mesh should be displayed (mandatory in order to be displayed)
             typeof(Translation), // equivalent of position
             typeof(Scale), // uniform scale
             typeof(MoveSpeed),
-            typeof(Asteroid));
+            typeof(CollisionTypeData));
 
-        EntityArchetype spaceshipArchetype = _entityManager.CreateArchetype(
+        LaserBeamArchetype = EntityManager.CreateArchetype(
+            typeof(RenderMesh),
+            typeof(LocalToWorld), // how the mesh should be displayed (mandatory in order to be displayed)
+            typeof(Translation), // equivalent of position
+            typeof(Scale), // uniform scale
+            typeof(MoveSpeed),
+            typeof(CollisionTypeData));
+
+        EntityArchetype spaceshipArchetype = EntityManager.CreateArchetype(
             typeof(RenderMesh),
             typeof(LocalToWorld), // how the mesh should be displayed (mandatory in order to be displayed)
             typeof(Translation), // equivalent of position
             typeof(Scale), // uniform scale
             typeof(Rotation),
-            typeof(Spaceship)
+            typeof(SpaceshipData),
+            typeof(CollisionTypeData)
         //    typeof(PlayerInputData)
         );
 
@@ -129,7 +145,7 @@ public class GameEngine : MonoBehaviour
         //_laserBeamArray = new NativeArray<Entity>(6, Allocator.Persistent);
         _asteroidArray = new NativeArray<Entity>(TotalNumberOfAsteroids, Allocator.Persistent);
 
-        _entityManager.CreateEntity(AsteroidArchetype, _asteroidArray); // fill the table with entities
+        EntityManager.CreateEntity(AsteroidArchetype, _asteroidArray); // fill the table with entities
 
         // initialize asteroids
         int i = 0;
@@ -137,23 +153,23 @@ public class GameEngine : MonoBehaviour
             for (int y = (int)WorldOffetValue; y < GridDimensionInt + WorldOffetValue; y++)
             {
                 Entity entity = _asteroidArray[i++];
-                _entityManager.SetSharedComponentData(
+                EntityManager.SetSharedComponentData(
                     entity,
                     new RenderMesh
                     {
-                        mesh = _mesh,
-                        material = _asteroidMaterial
+                        mesh = Mesh,
+                        material = AsteroidMaterial
                     });
 
-                _entityManager.SetComponentData(
+                EntityManager.SetComponentData(
                     entity,
                     new Translation { Value = new float3(x, y, 3f) });
 
-                _entityManager.SetComponentData(
+                EntityManager.SetComponentData(
                     entity,
                     new Scale { Value = 0.6f });
 
-                _entityManager.SetComponentData(
+                EntityManager.SetComponentData(
                     entity,
                     new MoveSpeed
                     {
@@ -161,21 +177,25 @@ public class GameEngine : MonoBehaviour
                         DirectionY = UnityEngine.Random.Range(-1f, 1f),
                         Speed = UnityEngine.Random.Range(0.05f, 0.2f)
                     });
+
+                EntityManager.SetComponentData(
+                    entity,
+                    new CollisionTypeData { CollisionObjectType = CollisionTypeEnum.Asteroid });
             }
 
-        _entityManager.CreateEntity(spaceshipArchetype, _spaceshipArray); // fill the table with entities
+        EntityManager.CreateEntity(spaceshipArchetype, _spaceshipArray); // fill the table with entities
 
         // initialize spaceship
         Entity spaceship = _spaceshipArray[0];
-        _entityManager.SetSharedComponentData(
+        EntityManager.SetSharedComponentData(
             spaceship,
             new RenderMesh
             {
-                mesh = _mesh,
-                material = _spaceshipMaterial
+                mesh = Mesh,
+                material = SpaceshipMaterial
             });
 
-        _entityManager.SetComponentData(
+        EntityManager.SetComponentData(
             spaceship,
             new Translation
             {
@@ -185,13 +205,21 @@ public class GameEngine : MonoBehaviour
                     3f)
             });
 
-        _entityManager.SetComponentData(
+        EntityManager.SetComponentData(
             spaceship,
             new Scale { Value = 0.3f });
 
-        _entityManager.SetComponentData(
+        EntityManager.SetComponentData(
             spaceship,
             new Rotation { Value = quaternion.RotateZ(0) });
+
+        EntityManager.SetComponentData(
+            spaceship,
+            new SpaceshipData { TimeToFireLaser = 0.5f });
+
+        EntityManager.SetComponentData(
+            spaceship,
+            new CollisionTypeData { CollisionObjectType = CollisionTypeEnum.Player });
 
         _playerScoreLabel.text = "score: 0";
         _restartButton.gameObject.SetActive(false);

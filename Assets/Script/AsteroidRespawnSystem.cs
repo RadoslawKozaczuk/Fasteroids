@@ -8,16 +8,15 @@ using static GameEngine;
 class AsteroidRespawnSystem : ComponentSystem
 {
     EndSimulationEntityCommandBufferSystem _commandBufferSystem;
-    Mesh AsteroidMesh;
-    Material AsteroidMaterial;
-    private EntityQuery query;
+    EntityQuery _query;
 
     protected override void OnCreate()
     {
         _commandBufferSystem = World.GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
-        query = GetEntityQuery(
+        _query = GetEntityQuery(
             ComponentType.ReadOnly<Translation>(),
-            ComponentType.ReadOnly<Spaceship>());
+            ComponentType.ReadOnly<Rotation>(),
+            ComponentType.ReadOnly<SpaceshipData>());
     }
 
     protected override void OnUpdate()
@@ -25,49 +24,58 @@ class AsteroidRespawnSystem : ComponentSystem
         float3 playerPosition = float3.zero; // initialization
 
         // player will always be found, he is never destroyed even upon death he is just marked as dead
-        Entities.With(query).ForEach((Entity entity, ref Translation translation)
+        Entities.With(_query).ForEach((Entity entity, ref Translation translation)
             => playerPosition = translation.Value);
 
         Entities.ForEach((Entity entity, ref TimeToRespawn timeToRespawn) =>
         {
-            var EntityCommandBuffer = _commandBufferSystem.CreateCommandBuffer();
+            EntityCommandBuffer entityCommandBuffer = _commandBufferSystem.CreateCommandBuffer();
 
             float time = timeToRespawn.Time;
             time -= Time.deltaTime;
 
             if (time <= 0)
             {
-                EntityCommandBuffer.DestroyEntity(entity);
-                Entity newAsteroid = EntityCommandBuffer.CreateEntity(AsteroidArchetype);
-
-                EntityCommandBuffer.SetSharedComponent(
-                    newAsteroid,
-                    new RenderMesh
-                    {
-                        mesh = Instance._mesh,
-                        material = Instance._asteroidMaterial
-                    });
-
-                EntityCommandBuffer.SetComponent(
-                    newAsteroid,
-                    new Translation { Value = new float3(FindSpawningLocation(playerPosition), 3f) });
-
-                EntityCommandBuffer.SetComponent(newAsteroid, new Scale { Value = 0.6f });
-
-                EntityCommandBuffer.SetComponent(
-                    newAsteroid,
-                    new MoveSpeed
-                    {
-                        DirectionX = UnityEngine.Random.Range(-1f, 1f),
-                        DirectionY = UnityEngine.Random.Range(-1f, 1f),
-                        Speed = UnityEngine.Random.Range(0.05f, 0.2f)
-                    });
+                entityCommandBuffer.DestroyEntity(entity);
+                CreateNewAsteroid(entityCommandBuffer, new float3(FindSpawningLocation(playerPosition), 3f));
             }
             else
             {
-                EntityCommandBuffer.SetComponent(entity, new TimeToRespawn() { Time = time });
+                entityCommandBuffer.SetComponent(entity, new TimeToRespawn() { Time = time });
             }
         });
+    }
+
+    void CreateNewAsteroid(EntityCommandBuffer entityCommandBuffer, float3 spawnLocation)
+    {
+        Entity newAsteroid = entityCommandBuffer.CreateEntity(AsteroidArchetype);
+
+        entityCommandBuffer.SetSharedComponent(
+            newAsteroid,
+            new RenderMesh
+            {
+                mesh = Instance.Mesh,
+                material = Instance.AsteroidMaterial
+            });
+
+        entityCommandBuffer.SetComponent(
+            newAsteroid,
+            new Translation { Value = spawnLocation });
+
+        entityCommandBuffer.SetComponent(newAsteroid, new Scale { Value = 0.6f });
+
+        entityCommandBuffer.SetComponent(
+            newAsteroid,
+            new MoveSpeed
+            {
+                DirectionX = UnityEngine.Random.Range(-1f, 1f),
+                DirectionY = UnityEngine.Random.Range(-1f, 1f),
+                Speed = UnityEngine.Random.Range(0.05f, 0.2f)
+            });
+
+        entityCommandBuffer.SetComponent(
+            newAsteroid,
+            new CollisionTypeData { CollisionObjectType = CollisionTypeEnum.Asteroid });
     }
 
     float2 FindSpawningLocation(float3 playerPosition)

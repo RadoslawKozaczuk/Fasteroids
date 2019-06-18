@@ -6,7 +6,7 @@ using Unity.Rendering;
 using Unity.Transforms;
 using static GameEngine;
 
-class CollisionSystemV2 : JobComponentSystem
+class CollisionSystem : JobComponentSystem
 {
     EndSimulationEntityCommandBufferSystem _commandBufferSystem;
     EntityArchetype _asteroidRespawn;
@@ -17,25 +17,27 @@ class CollisionSystemV2 : JobComponentSystem
         _asteroidRespawn = World.Active.EntityManager.CreateArchetype(typeof(TimeToRespawn));
     }
 
-    struct FindQuadrantSystemJob : IJobForEachWithEntity<Translation>
+    struct FindQuadrantSystemJob : IJobForEachWithEntity<Translation, CollisionTypeData>
     {
         // command buffer allows us to add or remove components as well as create or destroy entities
         [ReadOnly] public EntityCommandBuffer.Concurrent EntityCommandBuffer;
         [ReadOnly] public EntityArchetype AsteroidRespawnArchetype;
         [ReadOnly] public NativeMultiHashMap<int, QuadrantData> QuadrantMultiHashMap;
 
-        // player's tag
-        [ReadOnly] public ComponentDataFromEntity<Spaceship> Spaceship;
-
         [ReadOnly] NativeMultiHashMapIterator<int> _nativeMultiHashMapIterator;
 
-        public void Execute([ReadOnly] Entity entity, [ReadOnly] int index, ref Translation translation)
+        public void Execute(
+            [ReadOnly] Entity entity, 
+            [ReadOnly] int index, 
+            [ReadOnly] ref Translation translation, 
+            [ReadOnly] ref CollisionTypeData collisionType)
         {
             int hashMapKey = QuadrantSystem.GetPositionHashMapKey(translation.Value);
 
             // cycle through the entities in that hash map key
             if (QuadrantMultiHashMap.TryGetFirstValue(hashMapKey, out QuadrantData quadrantData, out _nativeMultiHashMapIterator))
             {
+                CollisionTypeEnum typeFirst = collisionType.CollisionObjectType;
                 do
                 {
                     // cycling through all the values
@@ -47,31 +49,41 @@ class CollisionSystemV2 : JobComponentSystem
                             new float2(quadrantData.EntityPosition.x, quadrantData.EntityPosition.y)
                         ) < AsteroidRadius2)
                     {
-                        // collision between asteroids - destroy both (except player's spaceship)
-                        if (Spaceship.Exists(entity))
-                        {
-                            EntityCommandBuffer.AddComponent(index, entity, new DeadData());
-                            // I have to somehow inform the rest of the game that player is dead
-                            // for now I'll just remove the Render component to prevent player rendering
-                            EntityCommandBuffer.RemoveComponent<RenderMesh>(index, entity);
-                        }
-                        else
-                        {
-                            EntityCommandBuffer.DestroyEntity(index, entity);
-                            Entity e1 = EntityCommandBuffer.CreateEntity(index, AsteroidRespawnArchetype);
-                            EntityCommandBuffer.SetComponent(index, e1, new TimeToRespawn() { Time = 1f });
-                        }
+                        CollisionTypeEnum typeSecond = quadrantData.CollisionTypeEnum;
 
-                        if (Spaceship.Exists(quadrantData.Entity))
+                        if(typeFirst == CollisionTypeEnum.Player)
                         {
-                            EntityCommandBuffer.AddComponent(index, quadrantData.Entity, new DeadData());
-                            EntityCommandBuffer.RemoveComponent<RenderMesh>(index, quadrantData.Entity);
+                            if(typeSecond == CollisionTypeEnum.Asteroid)
+                            {
+                                EntityCommandBuffer.AddComponent(index, entity, new DeadData());
+                                // I have to somehow inform the rest of the game that player is dead
+                                // for now I'll just remove the Render component to prevent player rendering
+                                EntityCommandBuffer.RemoveComponent<RenderMesh>(index, entity);
+                            }
+                        }
+                        else if(typeFirst == CollisionTypeEnum.Laser)
+                        {
+                            if (typeSecond == CollisionTypeEnum.Asteroid)
+                            {
+                                EntityCommandBuffer.DestroyEntity(index, entity);
+                                Entity e1 = EntityCommandBuffer.CreateEntity(index, AsteroidRespawnArchetype);
+                                EntityCommandBuffer.SetComponent(index, e1, new TimeToRespawn() { Time = 1f });
+                                EntityCommandBuffer.DestroyEntity(index, quadrantData.Entity);
+                                Entity e2 = EntityCommandBuffer.CreateEntity(index, AsteroidRespawnArchetype);
+                                EntityCommandBuffer.SetComponent(index, e2, new TimeToRespawn() { Time = 1f });
+                            }
                         }
                         else
                         {
-                            EntityCommandBuffer.DestroyEntity(index, quadrantData.Entity);
-                            Entity e2 = EntityCommandBuffer.CreateEntity(index, AsteroidRespawnArchetype);
-                            EntityCommandBuffer.SetComponent(index, e2, new TimeToRespawn() { Time = 1f });
+                            if(typeSecond == CollisionTypeEnum.Asteroid || typeSecond == CollisionTypeEnum.Laser)
+                            {
+                                EntityCommandBuffer.DestroyEntity(index, entity);
+                                Entity e1 = EntityCommandBuffer.CreateEntity(index, AsteroidRespawnArchetype);
+                                EntityCommandBuffer.SetComponent(index, e1, new TimeToRespawn() { Time = 1f });
+                                EntityCommandBuffer.DestroyEntity(index, quadrantData.Entity);
+                                Entity e2 = EntityCommandBuffer.CreateEntity(index, AsteroidRespawnArchetype);
+                                EntityCommandBuffer.SetComponent(index, e2, new TimeToRespawn() { Time = 1f });
+                            }
                         }
 
                         break;
@@ -89,7 +101,6 @@ class CollisionSystemV2 : JobComponentSystem
             EntityCommandBuffer = _commandBufferSystem.CreateCommandBuffer().ToConcurrent(),
             AsteroidRespawnArchetype = _asteroidRespawn,
             QuadrantMultiHashMap = QuadrantSystem.MultiHashMap,
-            Spaceship = GetComponentDataFromEntity<Spaceship>()
         };
 
         JobHandle jobHandle = findQuadrantSystemJob.Schedule(this, inputDeps);
