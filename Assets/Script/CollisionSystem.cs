@@ -4,8 +4,15 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using Unity.Rendering;
 using Unity.Transforms;
-using static GameEngine;
 
+/// <summary>
+/// Collision system is using the quadrant spatial partitioning algorithm to reduce the number of collision checks.
+/// I chose this approach as it is the easiest one to implement in ECS syntax. 
+/// Overall results are outstanding because Boost Compiler provides so much power that any other algorithm 
+/// no matter how excellently written in any other non-ECS way would have been insanely slower in comparison to this anyway.
+/// 
+/// Glory to ECS!
+/// </summary>
 class CollisionSystem : JobComponentSystem
 {
     EndSimulationEntityCommandBufferSystem _commandBufferSystem;
@@ -14,30 +21,29 @@ class CollisionSystem : JobComponentSystem
     protected override void OnCreate()
     {
         _commandBufferSystem = World.GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
-        _asteroidRespawn = World.Active.EntityManager.CreateArchetype(typeof(TimeToRespawn));
+        _asteroidRespawn = World.Active.EntityManager.CreateArchetype(typeof(GameEngine.TimeToRespawn));
     }
 
-    struct FindQuadrantSystemJob : IJobForEachWithEntity<Translation, CollisionTypeData>
+    struct FindQuadrantSystemJob : IJobForEachWithEntity<Translation, GameEngine.CollisionTypeData>
     {
         // command buffer allows us to add or remove components as well as create or destroy entities
         [ReadOnly] public EntityCommandBuffer.Concurrent EntityCommandBuffer;
         [ReadOnly] public EntityArchetype AsteroidRespawnArchetype;
         [ReadOnly] public NativeMultiHashMap<int, QuadrantData> QuadrantMultiHashMap;
-
         [ReadOnly] NativeMultiHashMapIterator<int> _nativeMultiHashMapIterator;
 
         public void Execute(
             [ReadOnly] Entity entity, 
             [ReadOnly] int index, 
             [ReadOnly] ref Translation translation, 
-            [ReadOnly] ref CollisionTypeData collisionType)
+            [ReadOnly] ref GameEngine.CollisionTypeData collisionType)
         {
             int hashMapKey = QuadrantSystem.GetPositionHashMapKey(translation.Value);
 
             // cycle through the entities in that hash map key
             if (QuadrantMultiHashMap.TryGetFirstValue(hashMapKey, out QuadrantData quadrantData, out _nativeMultiHashMapIterator))
             {
-                CollisionTypeEnum typeFirst = collisionType.CollisionObjectType;
+                GameEngine.CollisionTypeEnum typeFirst = collisionType.CollisionObjectType;
                 do
                 {
                     // cycling through all the values
@@ -47,42 +53,65 @@ class CollisionSystem : JobComponentSystem
                         math.distance(
                             new float2(translation.Value.x, translation.Value.y),
                             new float2(quadrantData.EntityPosition.x, quadrantData.EntityPosition.y)
-                        ) < AsteroidRadius2)
+                        ) < GameEngine.AsteroidRadius2)
                     {
-                        CollisionTypeEnum typeSecond = quadrantData.CollisionTypeEnum;
+                        GameEngine.CollisionTypeEnum typeSecond = quadrantData.CollisionTypeEnum;
 
-                        if(typeFirst == CollisionTypeEnum.Player)
+                        if(typeFirst == GameEngine.CollisionTypeEnum.Player)
                         {
-                            if(typeSecond == CollisionTypeEnum.Asteroid)
+                            if(typeSecond == GameEngine.CollisionTypeEnum.Asteroid)
                             {
-                                EntityCommandBuffer.AddComponent(index, entity, new DeadData());
-                                // I have to somehow inform the rest of the game that player is dead
-                                // for now I'll just remove the Render component to prevent player rendering
+                                // "destroy" player
+                                EntityCommandBuffer.AddComponent(index, entity, new GameEngine.DeadData());
+                                GameEngine.DidPlayerDieThisFrame = true;
                                 EntityCommandBuffer.RemoveComponent<RenderMesh>(index, entity);
+
+                                // destroy asteroid
+                                EntityCommandBuffer.DestroyEntity(index, quadrantData.Entity);
+                                EntityCommandBuffer.SetComponent(
+                                    index, 
+                                    EntityCommandBuffer.CreateEntity(index, AsteroidRespawnArchetype), 
+                                    new GameEngine.TimeToRespawn() { Time = 1f });
                             }
                         }
-                        else if(typeFirst == CollisionTypeEnum.Laser)
+                        else if(typeFirst == GameEngine.CollisionTypeEnum.Laser)
                         {
-                            if (typeSecond == CollisionTypeEnum.Asteroid)
+                            if (typeSecond == GameEngine.CollisionTypeEnum.Asteroid)
                             {
                                 EntityCommandBuffer.DestroyEntity(index, entity);
-                                Entity e1 = EntityCommandBuffer.CreateEntity(index, AsteroidRespawnArchetype);
-                                EntityCommandBuffer.SetComponent(index, e1, new TimeToRespawn() { Time = 1f });
                                 EntityCommandBuffer.DestroyEntity(index, quadrantData.Entity);
-                                Entity e2 = EntityCommandBuffer.CreateEntity(index, AsteroidRespawnArchetype);
-                                EntityCommandBuffer.SetComponent(index, e2, new TimeToRespawn() { Time = 1f });
+                                EntityCommandBuffer.SetComponent(
+                                    index, 
+                                    EntityCommandBuffer.CreateEntity(index, AsteroidRespawnArchetype), 
+                                    new GameEngine.TimeToRespawn() { Time = 1f });
                             }
                         }
-                        else
+                        else if(typeFirst == GameEngine.CollisionTypeEnum.Asteroid)
                         {
-                            if(typeSecond == CollisionTypeEnum.Asteroid || typeSecond == CollisionTypeEnum.Laser)
+                            EntityCommandBuffer.DestroyEntity(index, entity);
+                            EntityCommandBuffer.SetComponent(
+                                index,
+                                EntityCommandBuffer.CreateEntity(index, AsteroidRespawnArchetype), 
+                                new GameEngine.TimeToRespawn() { Time = 1f });
+
+                            if (typeSecond == GameEngine.CollisionTypeEnum.Asteroid)
                             {
-                                EntityCommandBuffer.DestroyEntity(index, entity);
-                                Entity e1 = EntityCommandBuffer.CreateEntity(index, AsteroidRespawnArchetype);
-                                EntityCommandBuffer.SetComponent(index, e1, new TimeToRespawn() { Time = 1f });
                                 EntityCommandBuffer.DestroyEntity(index, quadrantData.Entity);
-                                Entity e2 = EntityCommandBuffer.CreateEntity(index, AsteroidRespawnArchetype);
-                                EntityCommandBuffer.SetComponent(index, e2, new TimeToRespawn() { Time = 1f });
+                                EntityCommandBuffer.SetComponent(
+                                    index, 
+                                    EntityCommandBuffer.CreateEntity(index, AsteroidRespawnArchetype), 
+                                    new GameEngine.TimeToRespawn() { Time = 1f });
+                            }
+                            else if(typeSecond == GameEngine.CollisionTypeEnum.Laser)
+                            {
+                                EntityCommandBuffer.DestroyEntity(index, quadrantData.Entity);
+                            }
+                            else if(typeSecond == GameEngine.CollisionTypeEnum.Player)
+                            {
+                                // "destroy" player
+                                EntityCommandBuffer.AddComponent(index, quadrantData.Entity, new GameEngine.DeadData());
+                                GameEngine.DidPlayerDieThisFrame = true;
+                                EntityCommandBuffer.RemoveComponent<RenderMesh>(index, quadrantData.Entity);
                             }
                         }
 

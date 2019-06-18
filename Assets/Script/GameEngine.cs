@@ -51,11 +51,9 @@ public class GameEngine : MonoBehaviour
     [SerializeField] Button _restartButton;
     [SerializeField] Text _youLoseLabel;
 
-    Transform _playerTransform;
     float _timeToFireNextLaser = 0.5f;
     int _laserNextFreeIndex;
     int _playerScore = 0;
-    bool _playerDestroyed;
     int _asteroidPoolLastUsedObjectId;
     #endregion
 
@@ -187,7 +185,7 @@ public class GameEngine : MonoBehaviour
 
         if (DidPlayerDieThisFrame)
         {
-            //GameOver();
+            GameOver();
             DidPlayerDieThisFrame = false;
         }
     }
@@ -230,7 +228,6 @@ public class GameEngine : MonoBehaviour
             }
     }
 
-
     void HandleInput()
     {
         if (Input.GetKey(KeyCode.Escape))
@@ -247,8 +244,6 @@ public class GameEngine : MonoBehaviour
 
     void GameOver()
     {
-        _playerDestroyed = true;
-        _playerTransform.gameObject.SetActive(false);
         _restartButton.gameObject.SetActive(true);
         _youLoseLabel.gameObject.SetActive(true);
     }
@@ -258,14 +253,6 @@ public class GameEngine : MonoBehaviour
         _playerScore = 0;
         _playerScoreLabel.text = "score: 0";
 
-        _playerTransform.gameObject.SetActive(true);
-        _playerTransform.position = new Vector3(
-            GridDimensionFloat / 2f - 0.5f + WorldOffetValue,
-            GridDimensionFloat / 2f - 0.5f + WorldOffetValue,
-            0.3f);
-        _playerTransform.rotation = new Quaternion(0, 0, 0, 0);
-
-        _playerDestroyed = false;
         _restartButton.gameObject.SetActive(false);
         _youLoseLabel.gameObject.SetActive(false);
     }

@@ -6,6 +6,8 @@ using UnityEngine;
 
 public class PlayerSpaceshipSystem : ComponentSystem
 {
+    public ComponentDataFromEntity<GameEngine.DeadData> Dead;
+
     EndSimulationEntityCommandBufferSystem _commandBufferSystem;
     EntityQuery _query;
 
@@ -22,12 +24,17 @@ public class PlayerSpaceshipSystem : ComponentSystem
 
     protected override void OnUpdate()
     {
+        Dead = GetComponentDataFromEntity<GameEngine.DeadData>();
+
         Entities.With(_query).ForEach((
             Entity entity, 
             ref Translation translation, 
             ref Rotation rotation, 
             ref GameEngine.SpaceshipData ssData) =>
         {
+            if (Dead.Exists(entity))
+                return;
+
             EntityCommandBuffer entityCommandBuffer = _commandBufferSystem.CreateCommandBuffer();
 
             // this values are updated in the method below
