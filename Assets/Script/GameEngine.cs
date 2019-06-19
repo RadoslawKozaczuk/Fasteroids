@@ -42,6 +42,7 @@ public class GameEngine : MonoBehaviour
     public static int NumberOfAsteroidsDestroyedThisFrame;
     public static bool DidPlayerDieThisFrame;
 
+
     #region Private Fields
 
     // prefabs

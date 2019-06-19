@@ -41,7 +41,8 @@ public class PlayerSpaceshipSystem : ComponentSystem
             float3 playerPos = translation.Value;
             quaternion playerRot = rotation.Value;
 
-            UpdatePositionAndRotation(ref entity, ref playerPos, ref playerRot);
+            UpdatePositionAndRotation(ref entity, ref playerPos, ref playerRot, out float3 positionChange);
+            SkyboxRotator.LastPlayerMovement = new Vector3(-positionChange.y / 2, positionChange.x / 2); // move magic numbers to settings
 
             float timeToShoot = ssData.TimeToFireLaser;
             timeToShoot -= Time.deltaTime;
@@ -54,26 +55,32 @@ public class PlayerSpaceshipSystem : ComponentSystem
 
             // put it back to the entity's component
             entityCommandBuffer.SetComponent(entity, new GameEngine.SpaceshipData() { TimeToFireLaser = timeToShoot });
+
+            CameraFollow(playerPos);
         });
     }
 
-    void UpdatePositionAndRotation(ref Entity entity, ref float3 position, ref quaternion rotation)
+    void UpdatePositionAndRotation(ref Entity entity, ref float3 position, ref quaternion rotation, out float3 positionChange)
     {
         bool movingBackwards = false;
 
         if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow))
         {
             float3 forwardVector = math.mul(rotation, new float3(0, 1, 0));
-            position += forwardVector * Time.deltaTime * GameEngine.PlayerSpeed;
+            positionChange = new float3(forwardVector * Time.deltaTime * GameEngine.PlayerSpeed);
+            position += positionChange;
             PostUpdateCommands.SetComponent(entity, new Translation { Value = position });
         }
         else if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow))
         {
             float3 backwardVector = math.mul(rotation, new float3(0, -1, 0));
-            position += backwardVector * Time.deltaTime * GameEngine.PlayerSpeed;
+            positionChange = new float3(backwardVector * Time.deltaTime * GameEngine.PlayerSpeed);
+            position += positionChange;
             PostUpdateCommands.SetComponent(entity, new Translation { Value = position });
             movingBackwards = true;
         }
+        else
+            positionChange = float3.zero;
 
         // when moving backwards rotation is reversed to make it more natural
         if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow))
@@ -124,5 +131,12 @@ public class PlayerSpaceshipSystem : ComponentSystem
         entityCommandBuffer.SetComponent(
             entity,
             new GameEngine.CollisionTypeData { CollisionObjectType = GameEngine.CollisionTypeEnum.Laser });
+    }
+
+    void CameraFollow(float3 playerPosition)
+    {
+        var mainCamera = Camera.main;
+        if (mainCamera != null)
+            mainCamera.transform.position = new Vector3(playerPosition.x, playerPosition.y, -10);
     }
 }
