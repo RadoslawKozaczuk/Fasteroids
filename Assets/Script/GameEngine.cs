@@ -52,21 +52,21 @@ public class GameEngine : MonoBehaviour
     [SerializeField] Button _restartButton;
     [SerializeField] Text _youLoseLabel;
 
-    float _timeToFireNextLaser = 0.5f;
-    int _laserNextFreeIndex;
-    int _playerScore = 0;
-    int _asteroidPoolLastUsedObjectId;
+    public static int PlayerScore = 0;
     #endregion
 
     // ECS related
     public EntityManager EntityManager;
-    public Mesh Mesh;
+    public Mesh QuadMesh;
+    public Mesh AsteroidMesh;
+    public Material AsteroidMaterial;
     public Material SpaceshipMaterial;
     public Material LaserBeamMaterial;
-    public Material AsteroidMaterial;
     NativeArray<Entity> _spaceshipArray;
     NativeArray<Entity> _laserBeamArray;
     NativeArray<Entity> _asteroidArray;
+
+    public const float AsteroidScale = 0.25f;
 
     // tag component
     public struct SpaceshipData : IComponentData
@@ -79,11 +79,12 @@ public class GameEngine : MonoBehaviour
         public CollisionTypeEnum CollisionObjectType;
     }
 
-    public struct MoveSpeed : IComponentData
+    public struct MoveSpeedData : IComponentData
     {
         public float DirectionX;
         public float DirectionY;
-        public float Speed;
+        public float MoveSpeed;
+        public float3 RotationSpeed;
     }
 
     public struct TimeToRespawn : IComponentData
@@ -109,7 +110,8 @@ public class GameEngine : MonoBehaviour
             typeof(LocalToWorld), // how the mesh should be displayed (mandatory in order to be displayed)
             typeof(Translation), // equivalent of position
             typeof(Scale), // uniform scale
-            typeof(MoveSpeed),
+            typeof(MoveSpeedData),
+            typeof(Rotation),
             typeof(CollisionTypeData));
 
         LaserBeamArchetype = EntityManager.CreateArchetype(
@@ -117,7 +119,8 @@ public class GameEngine : MonoBehaviour
             typeof(LocalToWorld), // how the mesh should be displayed (mandatory in order to be displayed)
             typeof(Translation), // equivalent of position
             typeof(Scale), // uniform scale
-            typeof(MoveSpeed),
+            typeof(MoveSpeedData),
+            typeof(Rotation),
             typeof(CollisionTypeData));
 
         EntityArchetype spaceshipArchetype = EntityManager.CreateArchetype(
@@ -145,7 +148,7 @@ public class GameEngine : MonoBehaviour
             spaceship,
             new RenderMesh
             {
-                mesh = Mesh,
+                mesh = QuadMesh,
                 material = SpaceshipMaterial
             });
 
@@ -189,6 +192,8 @@ public class GameEngine : MonoBehaviour
             GameOver();
             DidPlayerDieThisFrame = false;
         }
+
+        _playerScoreLabel.text = "score: " + PlayerScore;
     }
 
     void SpawnAsteroidGrid()
@@ -202,30 +207,28 @@ public class GameEngine : MonoBehaviour
                     entity,
                     new RenderMesh
                     {
-                        mesh = Mesh,
+                        mesh = AsteroidMesh,
                         material = AsteroidMaterial
                     });
 
-                EntityManager.SetComponentData(
-                    entity,
-                    new Translation { Value = new float3(x, y, 3f) });
+                EntityManager.SetComponentData(entity, new Translation { Value = new float3(x, y, 3f) });
+                EntityManager.SetComponentData(entity, new Scale { Value = AsteroidScale });
 
                 EntityManager.SetComponentData(
                     entity,
-                    new Scale { Value = 0.6f });
-
-                EntityManager.SetComponentData(
-                    entity,
-                    new MoveSpeed
+                    new MoveSpeedData
                     {
                         DirectionX = UnityEngine.Random.Range(-1f, 1f),
                         DirectionY = UnityEngine.Random.Range(-1f, 1f),
-                        Speed = UnityEngine.Random.Range(0.05f, 0.2f)
+                        MoveSpeed = UnityEngine.Random.Range(0.05f, 0.2f),
+                        RotationSpeed = new float3(
+                            UnityEngine.Random.Range(0f, 1f),
+                            UnityEngine.Random.Range(0f, 1f),
+                            UnityEngine.Random.Range(0f, 1f))
                     });
 
-                EntityManager.SetComponentData(
-                    entity,
-                    new CollisionTypeData { CollisionObjectType = CollisionTypeEnum.Asteroid });
+                EntityManager.SetComponentData(entity, new CollisionTypeData { CollisionObjectType = CollisionTypeEnum.Asteroid });
+                EntityManager.SetComponentData(entity, new Rotation { Value = UnityEngine.Random.rotation });
             }
     }
 
@@ -251,7 +254,7 @@ public class GameEngine : MonoBehaviour
 
     public void RestartGame()
     {
-        _playerScore = 0;
+        PlayerScore = 0;
         _playerScoreLabel.text = "score: 0";
 
         _restartButton.gameObject.SetActive(false);

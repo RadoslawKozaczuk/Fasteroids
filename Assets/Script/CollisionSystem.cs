@@ -30,7 +30,9 @@ class CollisionSystem : JobComponentSystem
         [ReadOnly] public EntityCommandBuffer.Concurrent EntityCommandBuffer;
         [ReadOnly] public EntityArchetype AsteroidRespawnArchetype;
         [ReadOnly] public NativeMultiHashMap<int, QuadrantData> QuadrantMultiHashMap;
+
         [ReadOnly] NativeMultiHashMapIterator<int> _nativeMultiHashMapIterator;
+        int _scoredASteroids;
 
         public void Execute(
             [ReadOnly] Entity entity, 
@@ -78,6 +80,8 @@ class CollisionSystem : JobComponentSystem
                         {
                             if (typeSecond == GameEngine.CollisionTypeEnum.Asteroid)
                             {
+                                GameEngine.PlayerScore++;
+
                                 EntityCommandBuffer.DestroyEntity(index, entity);
                                 EntityCommandBuffer.DestroyEntity(index, quadrantData.Entity);
                                 EntityCommandBuffer.SetComponent(
@@ -104,6 +108,7 @@ class CollisionSystem : JobComponentSystem
                             }
                             else if(typeSecond == GameEngine.CollisionTypeEnum.Laser)
                             {
+                                GameEngine.PlayerScore++;
                                 EntityCommandBuffer.DestroyEntity(index, quadrantData.Entity);
                             }
                             else if(typeSecond == GameEngine.CollisionTypeEnum.Player)
@@ -133,7 +138,6 @@ class CollisionSystem : JobComponentSystem
         };
 
         JobHandle jobHandle = findQuadrantSystemJob.Schedule(this, inputDeps);
-
         return jobHandle;
     }
 }

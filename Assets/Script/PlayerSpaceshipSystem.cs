@@ -39,9 +39,8 @@ public class PlayerSpaceshipSystem : ComponentSystem
 
             // this values are updated in the method below
             float3 playerPos = translation.Value;
-            quaternion playerRot = rotation.Value;
 
-            UpdatePositionAndRotation(ref entity, ref playerPos, ref playerRot, out float3 positionChange);
+            UpdatePositionAndRotation(ref entity, ref playerPos, ref rotation, out float3 positionChange);
             SkyboxRotator.LastPlayerMovement = new Vector3(-positionChange.y / 2, positionChange.x / 2); // move magic numbers to settings
 
             float timeToShoot = ssData.TimeToFireLaser;
@@ -49,7 +48,7 @@ public class PlayerSpaceshipSystem : ComponentSystem
 
             if (timeToShoot < 0)
             {
-                CreateNewLaserBeam(entityCommandBuffer, playerPos, playerRot);
+                CreateNewLaserBeam(entityCommandBuffer, playerPos, rotation.Value);
                 timeToShoot = 0.5f;
             }
 
@@ -60,20 +59,20 @@ public class PlayerSpaceshipSystem : ComponentSystem
         });
     }
 
-    void UpdatePositionAndRotation(ref Entity entity, ref float3 position, ref quaternion rotation, out float3 positionChange)
+    void UpdatePositionAndRotation(ref Entity entity, ref float3 position, ref Rotation rotation, out float3 positionChange)
     {
         bool movingBackwards = false;
 
         if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow))
         {
-            float3 forwardVector = math.mul(rotation, new float3(0, 1, 0));
+            float3 forwardVector = math.mul(rotation.Value, new float3(0, 1, 0));
             positionChange = new float3(forwardVector * Time.deltaTime * GameEngine.PlayerSpeed);
             position += positionChange;
             PostUpdateCommands.SetComponent(entity, new Translation { Value = position });
         }
         else if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow))
         {
-            float3 backwardVector = math.mul(rotation, new float3(0, -1, 0));
+            float3 backwardVector = math.mul(rotation.Value, new float3(0, -1, 0));
             positionChange = new float3(backwardVector * Time.deltaTime * GameEngine.PlayerSpeed);
             position += positionChange;
             PostUpdateCommands.SetComponent(entity, new Translation { Value = position });
@@ -86,14 +85,12 @@ public class PlayerSpaceshipSystem : ComponentSystem
         if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow))
         {
             float rotationFactor = movingBackwards ? -GameEngine.PlayerRotationFactor : GameEngine.PlayerRotationFactor;
-            rotation = math.mul(rotation, quaternion.RotateZ(rotationFactor * Time.deltaTime));
-            PostUpdateCommands.SetComponent(entity, new Rotation { Value = rotation });
+            rotation.Value = math.mul(rotation.Value, quaternion.RotateZ(rotationFactor * Time.deltaTime));
         }
         else if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow))
         {
             float rotationFactor = movingBackwards ? GameEngine.PlayerRotationFactor : -GameEngine.PlayerRotationFactor;
-            rotation = math.mul(rotation, quaternion.RotateZ(rotationFactor * Time.deltaTime));
-            PostUpdateCommands.SetComponent(entity, new Rotation { Value = rotation });
+            rotation.Value = math.mul(rotation.Value, quaternion.RotateZ(rotationFactor * Time.deltaTime));
         }
     }
 
@@ -109,7 +106,7 @@ public class PlayerSpaceshipSystem : ComponentSystem
             entity,
             new RenderMesh
             {
-                mesh = GameEngine.Instance.Mesh,
+                mesh = GameEngine.Instance.QuadMesh,
                 material = GameEngine.Instance.LaserBeamMaterial
             });
 
@@ -121,11 +118,11 @@ public class PlayerSpaceshipSystem : ComponentSystem
 
         entityCommandBuffer.SetComponent(
             entity,
-            new GameEngine.MoveSpeed
+            new GameEngine.MoveSpeedData
             {
                 DirectionX = forwardVector.x,
                 DirectionY = forwardVector.y,
-                Speed = 1.25f
+                MoveSpeed = 1.25f
             });
 
         entityCommandBuffer.SetComponent(

@@ -54,7 +54,7 @@ class AsteroidRespawnSystem : ComponentSystem
             newAsteroid,
             new RenderMesh
             {
-                mesh = Instance.Mesh,
+                mesh = Instance.AsteroidMesh,
                 material = Instance.AsteroidMaterial
             });
 
@@ -62,16 +62,20 @@ class AsteroidRespawnSystem : ComponentSystem
             newAsteroid,
             new Translation { Value = spawnLocation });
 
-        entityCommandBuffer.SetComponent(newAsteroid, new Scale { Value = 0.6f });
+        entityCommandBuffer.SetComponent(newAsteroid, new Scale { Value = AsteroidScale });
 
         entityCommandBuffer.SetComponent(
             newAsteroid,
-            new MoveSpeed
+            new MoveSpeedData
             {
                 DirectionX = UnityEngine.Random.Range(-1f, 1f),
                 DirectionY = UnityEngine.Random.Range(-1f, 1f),
-                Speed = UnityEngine.Random.Range(0.05f, 0.2f)
-            });
+                MoveSpeed = UnityEngine.Random.Range(0.05f, 0.2f),
+                RotationSpeed = new float3(
+                    UnityEngine.Random.Range(0.05f, 0.2f),
+                    UnityEngine.Random.Range(0.05f, 0.2f),
+                    UnityEngine.Random.Range(0.05f, 0.2f))
+            }); 
 
         entityCommandBuffer.SetComponent(
             newAsteroid,
