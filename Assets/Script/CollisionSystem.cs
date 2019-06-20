@@ -70,10 +70,7 @@ class CollisionSystem : JobComponentSystem
 
                                 // destroy asteroid
                                 EntityCommandBuffer.DestroyEntity(index, quadrantData.Entity);
-                                EntityCommandBuffer.SetComponent(
-                                    index, 
-                                    EntityCommandBuffer.CreateEntity(index, AsteroidRespawnArchetype), 
-                                    new GameEngine.TimeToRespawn() { Time = 1f });
+                                CreateAsteroidRespawnEntity(EntityCommandBuffer, index, AsteroidRespawnArchetype);
                             }
                         }
                         else if(typeFirst == GameEngine.CollisionTypeEnum.Laser)
@@ -84,27 +81,18 @@ class CollisionSystem : JobComponentSystem
 
                                 EntityCommandBuffer.DestroyEntity(index, entity);
                                 EntityCommandBuffer.DestroyEntity(index, quadrantData.Entity);
-                                EntityCommandBuffer.SetComponent(
-                                    index, 
-                                    EntityCommandBuffer.CreateEntity(index, AsteroidRespawnArchetype), 
-                                    new GameEngine.TimeToRespawn() { Time = 1f });
+                                CreateAsteroidRespawnEntity(EntityCommandBuffer, index, AsteroidRespawnArchetype);
                             }
                         }
                         else if(typeFirst == GameEngine.CollisionTypeEnum.Asteroid)
                         {
                             EntityCommandBuffer.DestroyEntity(index, entity);
-                            EntityCommandBuffer.SetComponent(
-                                index,
-                                EntityCommandBuffer.CreateEntity(index, AsteroidRespawnArchetype), 
-                                new GameEngine.TimeToRespawn() { Time = 1f });
+                            CreateAsteroidRespawnEntity(EntityCommandBuffer, index, AsteroidRespawnArchetype);
 
                             if (typeSecond == GameEngine.CollisionTypeEnum.Asteroid)
                             {
                                 EntityCommandBuffer.DestroyEntity(index, quadrantData.Entity);
-                                EntityCommandBuffer.SetComponent(
-                                    index, 
-                                    EntityCommandBuffer.CreateEntity(index, AsteroidRespawnArchetype), 
-                                    new GameEngine.TimeToRespawn() { Time = 1f });
+                                CreateAsteroidRespawnEntity(EntityCommandBuffer, index, AsteroidRespawnArchetype);
                             }
                             else if(typeSecond == GameEngine.CollisionTypeEnum.Laser)
                             {
@@ -126,6 +114,14 @@ class CollisionSystem : JobComponentSystem
                 while (QuadrantMultiHashMap.TryGetNextValue(out quadrantData, ref _nativeMultiHashMapIterator));
             }
         }
+    }
+
+    static void CreateAsteroidRespawnEntity(EntityCommandBuffer.Concurrent entityCommandBuffer, int index, EntityArchetype respawn)
+    {
+        entityCommandBuffer.SetComponent(
+            index,
+            entityCommandBuffer.CreateEntity(index, respawn),
+            new GameEngine.TimeToRespawn() { Time = 1f });
     }
 
     protected override JobHandle OnUpdate(JobHandle inputDeps)

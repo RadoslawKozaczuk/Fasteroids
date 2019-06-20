@@ -325,6 +325,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 15815cfa1b5741342b2f6c6070944c71, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  SkyboxCamera: {fileID: 1372665980}
   _playerScoreLabel: {fileID: 1188977073}
   _mainCamera: {fileID: 519420031}
   _restartButton: {fileID: 1388927302}
@@ -503,7 +504,6 @@ GameObject:
   m_Component:
   - component: {fileID: 1372665981}
   - component: {fileID: 1372665980}
-  - component: {fileID: 1372665978}
   m_Layer: 0
   m_Name: SkyboxCamera
   m_TagString: Untagged
@@ -511,19 +511,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1372665978
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1372665977}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5a7a5bfbba021d841a12a0bdd3fe30d8, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  SkyboxCamera: {fileID: 1372665980}
 --- !u!20 &1372665980
 Camera:
   m_ObjectHideFlags: 0

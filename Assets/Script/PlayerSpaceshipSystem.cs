@@ -30,7 +30,7 @@ public class PlayerSpaceshipSystem : ComponentSystem
             Entity entity, 
             ref Translation translation, 
             ref Rotation rotation, 
-            ref GameEngine.SpaceshipData ssData) =>
+            ref GameEngine.SpaceshipData spaceshipData) =>
         {
             if (Dead.Exists(entity))
                 return;
@@ -41,9 +41,8 @@ public class PlayerSpaceshipSystem : ComponentSystem
             float3 playerPos = translation.Value;
 
             UpdatePositionAndRotation(ref entity, ref playerPos, ref rotation, out float3 positionChange);
-            SkyboxRotator.LastPlayerMovement = new Vector3(-positionChange.y / 2, positionChange.x / 2); // move magic numbers to settings
 
-            float timeToShoot = ssData.TimeToFireLaser;
+            float timeToShoot = spaceshipData.TimeToFireLaser;
             timeToShoot -= Time.deltaTime;
 
             if (timeToShoot < 0)
@@ -56,6 +55,8 @@ public class PlayerSpaceshipSystem : ComponentSystem
             entityCommandBuffer.SetComponent(entity, new GameEngine.SpaceshipData() { TimeToFireLaser = timeToShoot });
 
             CameraFollow(playerPos);
+
+            RotateSkybox(new Vector3(-positionChange.y / 2, positionChange.x / 2));
         });
     }
 
@@ -135,5 +136,12 @@ public class PlayerSpaceshipSystem : ComponentSystem
         var mainCamera = Camera.main;
         if (mainCamera != null)
             mainCamera.transform.position = new Vector3(playerPosition.x, playerPosition.y, -10);
+    }
+
+    void RotateSkybox(Vector3 playerDeltaMove)
+    {
+        // later on also add the ability to change the sky box with game restart/level change/etc
+        // If you change the skybox in playmode, you have to use the DynamicGI.UpdateEnvironment function call to update the ambient probe.
+        GameEngine.Instance.SkyboxCamera.transform.Rotate(playerDeltaMove);
     }
 }

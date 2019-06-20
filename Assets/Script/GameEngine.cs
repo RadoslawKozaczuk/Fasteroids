@@ -32,7 +32,6 @@ public class GameEngine : MonoBehaviour
 
     public const float WorldOffetValue = 1000f; // we move world top right to be sure we operate on positive numbers
 
-    // pool sizes
     public const float FrustumSizeX = 3.8f;
     public const float FrustumSizeY = 2.3f;
     #endregion
@@ -42,6 +41,7 @@ public class GameEngine : MonoBehaviour
     public static int NumberOfAsteroidsDestroyedThisFrame;
     public static bool DidPlayerDieThisFrame;
 
+    public Camera SkyboxCamera;
 
     #region Private Fields
 
@@ -63,7 +63,6 @@ public class GameEngine : MonoBehaviour
     public Material SpaceshipMaterial;
     public Material LaserBeamMaterial;
     NativeArray<Entity> _spaceshipArray;
-    NativeArray<Entity> _laserBeamArray;
     NativeArray<Entity> _asteroidArray;
 
     public const float AsteroidScale = 0.25f;
@@ -98,6 +97,7 @@ public class GameEngine : MonoBehaviour
 
     public static EntityArchetype AsteroidArchetype;
     public static EntityArchetype LaserBeamArchetype;
+    public static EntityArchetype SpaceshipArchetype;
 
     private void Awake() => Instance = this;
 
@@ -123,7 +123,7 @@ public class GameEngine : MonoBehaviour
             typeof(Rotation),
             typeof(CollisionTypeData));
 
-        EntityArchetype spaceshipArchetype = EntityManager.CreateArchetype(
+        SpaceshipArchetype = EntityManager.CreateArchetype(
             typeof(RenderMesh),
             typeof(LocalToWorld), // how the mesh should be displayed (mandatory in order to be displayed)
             typeof(Translation), // equivalent of position
@@ -133,50 +133,13 @@ public class GameEngine : MonoBehaviour
             typeof(CollisionTypeData)
         );
 
-        _spaceshipArray = new NativeArray<Entity>(1, Allocator.Persistent);
         _asteroidArray = new NativeArray<Entity>(TotalNumberOfAsteroids, Allocator.Persistent);
 
         EntityManager.CreateEntity(AsteroidArchetype, _asteroidArray); // fill the table with entities
 
         SpawnAsteroidGrid();
 
-        EntityManager.CreateEntity(spaceshipArchetype, _spaceshipArray); // fill the table with entities
-
-        // initialize spaceship
-        Entity spaceship = _spaceshipArray[0];
-        EntityManager.SetSharedComponentData(
-            spaceship,
-            new RenderMesh
-            {
-                mesh = QuadMesh,
-                material = SpaceshipMaterial
-            });
-
-        EntityManager.SetComponentData(
-            spaceship,
-            new Translation
-            {
-                Value = new float3(
-                    GridDimensionFloat / 2f - 0.5f + WorldOffetValue,
-                    GridDimensionFloat / 2f - 0.5f + WorldOffetValue,
-                    3f)
-            });
-
-        EntityManager.SetComponentData(
-            spaceship,
-            new Scale { Value = 0.3f });
-
-        EntityManager.SetComponentData(
-            spaceship,
-            new Rotation { Value = quaternion.RotateZ(0) });
-
-        EntityManager.SetComponentData(
-            spaceship,
-            new SpaceshipData { TimeToFireLaser = 0.5f });
-
-        EntityManager.SetComponentData(
-            spaceship,
-            new CollisionTypeData { CollisionObjectType = CollisionTypeEnum.Player });
+        InitializeSpaceship();
 
         _playerScoreLabel.text = "score: 0";
         _restartButton.gameObject.SetActive(false);
@@ -232,6 +195,47 @@ public class GameEngine : MonoBehaviour
             }
     }
 
+    void InitializeSpaceship()
+    {
+        _spaceshipArray = new NativeArray<Entity>(1, Allocator.Persistent);
+        EntityManager.CreateEntity(SpaceshipArchetype, _spaceshipArray); // fill the table with entities
+
+        Entity spaceship = _spaceshipArray[0];
+        EntityManager.SetSharedComponentData(
+            spaceship,
+            new RenderMesh
+            {
+                mesh = QuadMesh,
+                material = SpaceshipMaterial
+            });
+
+        EntityManager.SetComponentData(
+            spaceship,
+            new Translation
+            {
+                Value = new float3(
+                    GridDimensionFloat / 2f - 0.5f + WorldOffetValue,
+                    GridDimensionFloat / 2f - 0.5f + WorldOffetValue,
+                    3f)
+            });
+
+        EntityManager.SetComponentData(
+            spaceship,
+            new Scale { Value = 0.3f });
+
+        EntityManager.SetComponentData(
+            spaceship,
+            new Rotation { Value = quaternion.RotateZ(0) });
+
+        EntityManager.SetComponentData(
+            spaceship,
+            new SpaceshipData { TimeToFireLaser = 0.5f });
+
+        EntityManager.SetComponentData(
+            spaceship,
+            new CollisionTypeData { CollisionObjectType = CollisionTypeEnum.Player });
+    }
+
     void HandleInput()
     {
         if (Input.GetKey(KeyCode.Escape))
@@ -243,6 +247,7 @@ public class GameEngine : MonoBehaviour
 
     void DisposeNativeArrays()
     {
+        _spaceshipArray.Dispose();
         _asteroidArray.Dispose();
     }
 
@@ -254,6 +259,8 @@ public class GameEngine : MonoBehaviour
 
     public void RestartGame()
     {
+        InitializeSpaceship();
+
         PlayerScore = 0;
         _playerScoreLabel.text = "score: 0";
 
