@@ -1,4 +1,5 @@
-﻿using Unity.Burst;
+﻿using Assets.Script.Components;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
@@ -9,7 +10,7 @@ public struct QuadrantData
 {
     public Entity Entity;
     public float3 EntityPosition;
-    public GameEngine.CollisionTypeEnum CollisionTypeEnum;
+    public CollisionTypeEnum CollisionTypeEnum;
 }
 
 class QuadrantSystem : ComponentSystem
@@ -23,7 +24,7 @@ class QuadrantSystem : ComponentSystem
         => (int)(math.floor(position.x / QuadrantCellSize) + (QuadrantMultiplier * math.floor(position.y / QuadrantCellSize)));
 
     [BurstCompile]
-    struct SetQuadrantHashMapDataJob : IJobForEachWithEntity<Translation, GameEngine.CollisionTypeData>
+    struct SetQuadrantHashMapDataJob : IJobForEachWithEntity<Translation, CollisionTypeData>
     {
         public NativeMultiHashMap<int, QuadrantData>.Concurrent NativeMultiHashMap;
 
@@ -31,7 +32,7 @@ class QuadrantSystem : ComponentSystem
             [ReadOnly] Entity entity, 
             [ReadOnly] int index, 
             [ReadOnly] ref Translation translation,
-            [ReadOnly] ref GameEngine.CollisionTypeData collisionType)
+            [ReadOnly] ref CollisionTypeData collisionType)
         {
             int hashMapKey = GetPositionHashMapKey(translation.Value);
             NativeMultiHashMap.Add(
@@ -61,7 +62,7 @@ class QuadrantSystem : ComponentSystem
     {
         EntityQuery entityQuery = GetEntityQuery(
             typeof(Translation),
-            typeof(GameEngine.CollisionTypeData));
+            typeof(CollisionTypeData));
 
         MultiHashMap.Clear(); // need to be cleared because it is persistent
 

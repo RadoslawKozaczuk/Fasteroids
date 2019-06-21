@@ -1,9 +1,9 @@
-﻿using Unity.Burst;
+﻿using Assets.Script.Components;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
 using UnityEngine;
-using static GameEngine;
 
 namespace Assets.Script
 {

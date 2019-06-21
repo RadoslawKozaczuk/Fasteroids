@@ -1,4 +1,5 @@
-﻿using Unity.Collections;
+﻿using Assets.Script.Components;
+using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
@@ -21,10 +22,10 @@ class CollisionSystem : JobComponentSystem
     protected override void OnCreate()
     {
         _commandBufferSystem = World.GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
-        _asteroidRespawn = World.Active.EntityManager.CreateArchetype(typeof(GameEngine.TimeToRespawn));
+        _asteroidRespawn = World.Active.EntityManager.CreateArchetype(typeof(TimeToRespawn));
     }
 
-    struct FindQuadrantSystemJob : IJobForEachWithEntity<Translation, GameEngine.CollisionTypeData>
+    struct FindQuadrantSystemJob : IJobForEachWithEntity<Translation, CollisionTypeData>
     {
         // command buffer allows us to add or remove components as well as create or destroy entities
         [ReadOnly] public EntityCommandBuffer.Concurrent EntityCommandBuffer;
@@ -37,14 +38,14 @@ class CollisionSystem : JobComponentSystem
             [ReadOnly] Entity entity, 
             [ReadOnly] int index, 
             [ReadOnly] ref Translation translation, 
-            [ReadOnly] ref GameEngine.CollisionTypeData collisionType)
+            [ReadOnly] ref CollisionTypeData collisionType)
         {
             int hashMapKey = QuadrantSystem.GetPositionHashMapKey(translation.Value);
 
             // cycle through the entities in that hash map key
             if (QuadrantMultiHashMap.TryGetFirstValue(hashMapKey, out QuadrantData quadrantData, out _nativeMultiHashMapIterator))
             {
-                GameEngine.CollisionTypeEnum typeFirst = collisionType.CollisionObjectType;
+                CollisionTypeEnum typeFirst = collisionType.CollisionObjectType;
                 do
                 {
                     // cycling through all the values
@@ -56,14 +57,14 @@ class CollisionSystem : JobComponentSystem
                             new float2(quadrantData.EntityPosition.x, quadrantData.EntityPosition.y)
                         ) < GameEngine.AsteroidRadius2)
                     {
-                        GameEngine.CollisionTypeEnum typeSecond = quadrantData.CollisionTypeEnum;
+                        CollisionTypeEnum typeSecond = quadrantData.CollisionTypeEnum;
 
-                        if(typeFirst == GameEngine.CollisionTypeEnum.Player)
+                        if(typeFirst == CollisionTypeEnum.Player)
                         {
-                            if(typeSecond == GameEngine.CollisionTypeEnum.Asteroid)
+                            if(typeSecond == CollisionTypeEnum.Asteroid)
                             {
                                 // "destroy" player
-                                EntityCommandBuffer.AddComponent(index, entity, new GameEngine.DeadData());
+                                EntityCommandBuffer.AddComponent(index, entity, new DeadData());
                                 GameEngine.DidPlayerDieThisFrame = true;
                                 EntityCommandBuffer.RemoveComponent<RenderMesh>(index, entity);
 
@@ -72,9 +73,9 @@ class CollisionSystem : JobComponentSystem
                                 CreateAsteroidRespawnEntity(EntityCommandBuffer, index, AsteroidRespawnArchetype);
                             }
                         }
-                        else if(typeFirst == GameEngine.CollisionTypeEnum.Laser)
+                        else if(typeFirst == CollisionTypeEnum.Laser)
                         {
-                            if (typeSecond == GameEngine.CollisionTypeEnum.Asteroid)
+                            if (typeSecond == CollisionTypeEnum.Asteroid)
                             {
                                 GameEngine.PlayerScore++;
 
@@ -83,25 +84,25 @@ class CollisionSystem : JobComponentSystem
                                 CreateAsteroidRespawnEntity(EntityCommandBuffer, index, AsteroidRespawnArchetype);
                             }
                         }
-                        else if(typeFirst == GameEngine.CollisionTypeEnum.Asteroid)
+                        else if(typeFirst == CollisionTypeEnum.Asteroid)
                         {
                             EntityCommandBuffer.DestroyEntity(index, entity);
                             CreateAsteroidRespawnEntity(EntityCommandBuffer, index, AsteroidRespawnArchetype);
 
-                            if (typeSecond == GameEngine.CollisionTypeEnum.Asteroid)
+                            if (typeSecond == CollisionTypeEnum.Asteroid)
                             {
                                 EntityCommandBuffer.DestroyEntity(index, quadrantData.Entity);
                                 CreateAsteroidRespawnEntity(EntityCommandBuffer, index, AsteroidRespawnArchetype);
                             }
-                            else if(typeSecond == GameEngine.CollisionTypeEnum.Laser)
+                            else if(typeSecond == CollisionTypeEnum.Laser)
                             {
                                 GameEngine.PlayerScore++;
                                 EntityCommandBuffer.DestroyEntity(index, quadrantData.Entity);
                             }
-                            else if(typeSecond == GameEngine.CollisionTypeEnum.Player)
+                            else if(typeSecond == CollisionTypeEnum.Player)
                             {
                                 // "destroy" player
-                                EntityCommandBuffer.AddComponent(index, quadrantData.Entity, new GameEngine.DeadData());
+                                EntityCommandBuffer.AddComponent(index, quadrantData.Entity, new DeadData());
                                 GameEngine.DidPlayerDieThisFrame = true;
                                 EntityCommandBuffer.RemoveComponent<RenderMesh>(index, quadrantData.Entity);
                             }
@@ -120,7 +121,7 @@ class CollisionSystem : JobComponentSystem
         entityCommandBuffer.SetComponent(
             index,
             entityCommandBuffer.CreateEntity(index, respawn),
-            new GameEngine.TimeToRespawn() { Time = 1f });
+            new TimeToRespawn() { Time = 1f });
     }
 
     protected override JobHandle OnUpdate(JobHandle inputDeps)

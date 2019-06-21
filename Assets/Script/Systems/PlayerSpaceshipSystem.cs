@@ -1,4 +1,5 @@
-﻿using Unity.Entities;
+﻿using Assets.Script.Components;
+using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Rendering;
 using Unity.Transforms;
@@ -6,7 +7,7 @@ using UnityEngine;
 
 public class PlayerSpaceshipSystem : ComponentSystem
 {
-    public ComponentDataFromEntity<GameEngine.DeadData> Dead;
+    public ComponentDataFromEntity<DeadData> Dead;
 
     EndSimulationEntityCommandBufferSystem _commandBufferSystem;
     EntityQuery _query;
@@ -19,18 +20,18 @@ public class PlayerSpaceshipSystem : ComponentSystem
         _query = GetEntityQuery(
             ComponentType.ReadWrite<Translation>(), 
             ComponentType.ReadWrite<Rotation>(),
-            ComponentType.ReadWrite<GameEngine.SpaceshipData>());
+            ComponentType.ReadWrite<SpaceshipData>());
     }
 
     protected override void OnUpdate()
     {
-        Dead = GetComponentDataFromEntity<GameEngine.DeadData>();
+        Dead = GetComponentDataFromEntity<DeadData>();
 
         Entities.With(_query).ForEach((
             Entity entity, 
             ref Translation translation, 
             ref Rotation rotation, 
-            ref GameEngine.SpaceshipData spaceshipData) =>
+            ref SpaceshipData spaceshipData) =>
         {
             if (Dead.Exists(entity))
                 return;
@@ -52,7 +53,7 @@ public class PlayerSpaceshipSystem : ComponentSystem
             }
 
             // put it back to the entity's component
-            entityCommandBuffer.SetComponent(entity, new GameEngine.SpaceshipData() { TimeToFireLaser = timeToShoot });
+            entityCommandBuffer.SetComponent(entity, new SpaceshipData() { TimeToFireLaser = timeToShoot });
 
             CameraFollow(playerPos);
 
@@ -119,18 +120,18 @@ public class PlayerSpaceshipSystem : ComponentSystem
 
         entityCommandBuffer.SetComponent(
             entity,
-            new GameEngine.MoveSpeedData
+            new MoveSpeedData
             {
                 DirectionX = forwardVector.x,
                 DirectionY = forwardVector.y,
-                MoveSpeed = 2.5f
+                MoveSpeed = GameEngine.LaserSpeed
             });
 
         entityCommandBuffer.SetComponent(
             entity,
-            new GameEngine.CollisionTypeData { CollisionObjectType = GameEngine.CollisionTypeEnum.Laser });
+            new CollisionTypeData { CollisionObjectType = CollisionTypeEnum.Laser });
 
-        entityCommandBuffer.SetComponent(entity, new GameEngine.TimeToDie { Time = 2f });
+        entityCommandBuffer.SetComponent(entity, new TimeToDie { Time = GameEngine.LaserLiveLength });
     }
 
     void CameraFollow(float3 playerPosition)

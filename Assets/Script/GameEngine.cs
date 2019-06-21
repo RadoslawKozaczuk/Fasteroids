@@ -1,4 +1,4 @@
-﻿using Unity.Collections;
+﻿using Assets.Script.Components;
 using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Rendering;
@@ -8,14 +8,13 @@ using UnityEngine.UI;
 
 public class GameEngine : MonoBehaviour
 {
-    public enum CollisionTypeEnum { Player, Laser, Asteroid }
-
     #region Constants
     public const float AsteroidRadius = 0.19f;
     public const float AsteroidRadius2 = AsteroidRadius + AsteroidRadius;
     const float AsteroidTranformValueZ = 0.4f;
     const float LaserRadius = 0.07f;
-    const float LaserSpeed = 2.5f;
+    public const float LaserSpeed = 2.5f;
+    public const float LaserLiveLength = 2f;
 
     const float AsteroidSpeedMin = 0.009f; // distance traveled per frame
     const float AsteroidSpeedMax = 0.02f; // distance traveled per frame
@@ -65,51 +64,44 @@ public class GameEngine : MonoBehaviour
 
     public const float AsteroidScale = 0.25f;
 
-    // tag component
-    public struct SpaceshipData : IComponentData
-    {
-        public float TimeToFireLaser;
-    }
-
-    public struct CollisionTypeData : IComponentData
-    {
-        public CollisionTypeEnum CollisionObjectType;
-    }
-
-    public struct MoveSpeedData : IComponentData
-    {
-        public float DirectionX;
-        public float DirectionY;
-        public float MoveSpeed;
-        public float3 RotationSpeed;
-    }
-
-    public struct TimeToRespawn : IComponentData
-    {
-        public float Time;
-    }
-
-    public struct TimeToDie : IComponentData
-    {
-        public float Time;
-    }
-
     // some entities should not be destroyed upon death and just marked instead
     // for example player - camera follows him even if he's dead
-    public struct DeadData : IComponentData { }
-
     public static EntityArchetype AsteroidArchetype;
     public static EntityArchetype LaserBeamArchetype;
     public static EntityArchetype SpaceshipArchetype;
 
-    private void Awake() => Instance = this;
+    void Awake() => Instance = this;
 
     void Start()
     {
         EntityManager = World.Active.EntityManager;
 
+        CreateArchetypes();
+        SpawnAsteroidGrid();
+        InitializeSpaceship();
+
+        _playerScoreLabel.text = "score: 0";
+        _restartButton.gameObject.SetActive(false);
+        _youLoseLabel.gameObject.SetActive(false);
+    }
+
+    void Update()
+    {
+        HandleInput();
+
+        if (DidPlayerDieThisFrame)
+        {
+            GameOver();
+            DidPlayerDieThisFrame = false;
+        }
+
+        _playerScoreLabel.text = "score: " + PlayerScore;
+    }
+
+    void CreateArchetypes()
+    {
         AsteroidArchetype = EntityManager.CreateArchetype(
-            typeof(RenderMesh), 
+            typeof(RenderMesh),
             typeof(LocalToWorld), // how the mesh should be displayed (mandatory in order to be displayed)
             typeof(Translation), // equivalent of position
             typeof(Scale), // uniform scale
@@ -136,27 +128,6 @@ public class GameEngine : MonoBehaviour
             typeof(SpaceshipData),
             typeof(CollisionTypeData)
         );
-
-        SpawnAsteroidGrid();
-
-        InitializeSpaceship();
-
-        _playerScoreLabel.text = "score: 0";
-        _restartButton.gameObject.SetActive(false);
-        _youLoseLabel.gameObject.SetActive(false);
-    }
-
-    void Update()
-    {
-        HandleInput();
-
-        if (DidPlayerDieThisFrame)
-        {
-            GameOver();
-            DidPlayerDieThisFrame = false;
-        }
-
-        _playerScoreLabel.text = "score: " + PlayerScore;
     }
 
     void SpawnAsteroidGrid()
@@ -216,29 +187,16 @@ public class GameEngine : MonoBehaviour
                     3f)
             });
 
-        EntityManager.SetComponentData(
-            spaceship,
-            new Scale { Value = 0.3f });
-
-        EntityManager.SetComponentData(
-            spaceship,
-            new Rotation { Value = quaternion.RotateZ(0) });
-
-        EntityManager.SetComponentData(
-            spaceship,
-            new SpaceshipData { TimeToFireLaser = 0.5f });
-
-        EntityManager.SetComponentData(
-            spaceship,
-            new CollisionTypeData { CollisionObjectType = CollisionTypeEnum.Player });
+        EntityManager.SetComponentData(spaceship, new Scale { Value = 0.3f });
+        EntityManager.SetComponentData(spaceship, new Rotation { Value = quaternion.RotateZ(0) });
+        EntityManager.SetComponentData(spaceship, new SpaceshipData { TimeToFireLaser = 0.5f });
+        EntityManager.SetComponentData(spaceship, new CollisionTypeData { CollisionObjectType = CollisionTypeEnum.Player });
     }
 
     void HandleInput()
     {
         if (Input.GetKey(KeyCode.Escape))
-        {
             Application.Quit();
-        }
     }
 
     void GameOver()
