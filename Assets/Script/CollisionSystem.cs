@@ -32,7 +32,6 @@ class CollisionSystem : JobComponentSystem
         [ReadOnly] public NativeMultiHashMap<int, QuadrantData> QuadrantMultiHashMap;
 
         [ReadOnly] NativeMultiHashMapIterator<int> _nativeMultiHashMapIterator;
-        int _scoredASteroids;
 
         public void Execute(
             [ReadOnly] Entity entity, 
@@ -133,7 +132,6 @@ class CollisionSystem : JobComponentSystem
             QuadrantMultiHashMap = QuadrantSystem.MultiHashMap,
         };
 
-        JobHandle jobHandle = findQuadrantSystemJob.Schedule(this, inputDeps);
-        return jobHandle;
+        return findQuadrantSystemJob.Schedule(this, inputDeps);
     }
 }

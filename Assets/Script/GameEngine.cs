@@ -19,8 +19,8 @@ public class GameEngine : MonoBehaviour
 
     const float AsteroidSpeedMin = 0.009f; // distance traveled per frame
     const float AsteroidSpeedMax = 0.02f; // distance traveled per frame
-    public const int GridDimensionInt = 180;
-    public const float GridDimensionFloat = 180;
+    public const int GridDimensionInt = 100;
+    public const float GridDimensionFloat = 100;
     const int TotalNumberOfAsteroids = GridDimensionInt * GridDimensionInt;
 
     const float PlayerRadius = 0.08f;
@@ -62,8 +62,6 @@ public class GameEngine : MonoBehaviour
     public Material AsteroidMaterial;
     public Material SpaceshipMaterial;
     public Material LaserBeamMaterial;
-    NativeArray<Entity> _spaceshipArray;
-    NativeArray<Entity> _asteroidArray;
 
     public const float AsteroidScale = 0.25f;
 
@@ -87,6 +85,11 @@ public class GameEngine : MonoBehaviour
     }
 
     public struct TimeToRespawn : IComponentData
+    {
+        public float Time;
+    }
+
+    public struct TimeToDie : IComponentData
     {
         public float Time;
     }
@@ -121,7 +124,8 @@ public class GameEngine : MonoBehaviour
             typeof(Scale), // uniform scale
             typeof(MoveSpeedData),
             typeof(Rotation),
-            typeof(CollisionTypeData));
+            typeof(CollisionTypeData),
+            typeof(TimeToDie));
 
         SpaceshipArchetype = EntityManager.CreateArchetype(
             typeof(RenderMesh),
@@ -132,10 +136,6 @@ public class GameEngine : MonoBehaviour
             typeof(SpaceshipData),
             typeof(CollisionTypeData)
         );
-
-        _asteroidArray = new NativeArray<Entity>(TotalNumberOfAsteroids, Allocator.Persistent);
-
-        EntityManager.CreateEntity(AsteroidArchetype, _asteroidArray); // fill the table with entities
 
         SpawnAsteroidGrid();
 
@@ -161,11 +161,10 @@ public class GameEngine : MonoBehaviour
 
     void SpawnAsteroidGrid()
     {
-        int i = 0;
         for (int x = (int)WorldOffetValue; x < GridDimensionInt + WorldOffetValue; x++)
             for (int y = (int)WorldOffetValue; y < GridDimensionInt + WorldOffetValue; y++)
             {
-                Entity entity = _asteroidArray[i++];
+                Entity entity = EntityManager.CreateEntity(AsteroidArchetype);
                 EntityManager.SetSharedComponentData(
                     entity,
                     new RenderMesh
@@ -197,10 +196,8 @@ public class GameEngine : MonoBehaviour
 
     void InitializeSpaceship()
     {
-        _spaceshipArray = new NativeArray<Entity>(1, Allocator.Persistent);
-        EntityManager.CreateEntity(SpaceshipArchetype, _spaceshipArray); // fill the table with entities
+        Entity spaceship = EntityManager.CreateEntity(SpaceshipArchetype);
 
-        Entity spaceship = _spaceshipArray[0];
         EntityManager.SetSharedComponentData(
             spaceship,
             new RenderMesh
@@ -240,15 +237,8 @@ public class GameEngine : MonoBehaviour
     {
         if (Input.GetKey(KeyCode.Escape))
         {
-            DisposeNativeArrays();
             Application.Quit();
         }
-    }
-
-    void DisposeNativeArrays()
-    {
-        _spaceshipArray.Dispose();
-        _asteroidArray.Dispose();
     }
 
     void GameOver()

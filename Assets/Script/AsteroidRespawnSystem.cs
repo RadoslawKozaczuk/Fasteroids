@@ -27,21 +27,16 @@ class AsteroidRespawnSystem : ComponentSystem
         Entities.With(_query).ForEach((Entity entity, ref Translation translation)
             => playerPosition = translation.Value);
 
+        EntityCommandBuffer entityCommandBuffer = _commandBufferSystem.CreateCommandBuffer();
+
         Entities.ForEach((Entity entity, ref TimeToRespawn timeToRespawn) =>
         {
-            EntityCommandBuffer entityCommandBuffer = _commandBufferSystem.CreateCommandBuffer();
+            timeToRespawn.Time -= Time.deltaTime;
 
-            float time = timeToRespawn.Time;
-            time -= Time.deltaTime;
-
-            if (time <= 0)
+            if (timeToRespawn.Time <= 0)
             {
                 entityCommandBuffer.DestroyEntity(entity);
                 CreateNewAsteroid(entityCommandBuffer, new float3(FindSpawningLocation(playerPosition), 3f));
-            }
-            else
-            {
-                entityCommandBuffer.SetComponent(entity, new TimeToRespawn() { Time = time });
             }
         });
     }
@@ -77,9 +72,8 @@ class AsteroidRespawnSystem : ComponentSystem
                     UnityEngine.Random.Range(0.05f, 0.2f))
             }); 
 
-        entityCommandBuffer.SetComponent(
-            newAsteroid,
-            new CollisionTypeData { CollisionObjectType = CollisionTypeEnum.Asteroid });
+        entityCommandBuffer.SetComponent(newAsteroid, new CollisionTypeData { CollisionObjectType = CollisionTypeEnum.Asteroid });
+        entityCommandBuffer.SetComponent(newAsteroid, new Rotation { Value = UnityEngine.Random.rotation });
     }
 
     float2 FindSpawningLocation(float3 playerPosition)

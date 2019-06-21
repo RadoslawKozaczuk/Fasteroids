@@ -123,12 +123,14 @@ public class PlayerSpaceshipSystem : ComponentSystem
             {
                 DirectionX = forwardVector.x,
                 DirectionY = forwardVector.y,
-                MoveSpeed = 1.25f
+                MoveSpeed = 2.5f
             });
 
         entityCommandBuffer.SetComponent(
             entity,
             new GameEngine.CollisionTypeData { CollisionObjectType = GameEngine.CollisionTypeEnum.Laser });
+
+        entityCommandBuffer.SetComponent(entity, new GameEngine.TimeToDie { Time = 2f });
     }
 
     void CameraFollow(float3 playerPosition)
