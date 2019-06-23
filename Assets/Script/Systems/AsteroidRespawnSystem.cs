@@ -51,7 +51,6 @@ namespace Assets.Script.Systems
                         });
 
                     PostUpdateCommands.SetComponent(entity, new Translation { Value = spawnLocation });
-
                     PostUpdateCommands.SetComponent(entity, new Scale { Value = AsteroidScale });
 
                     PostUpdateCommands.SetComponent(

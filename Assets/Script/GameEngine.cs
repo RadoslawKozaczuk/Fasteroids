@@ -58,9 +58,12 @@ public class GameEngine : MonoBehaviour
     public EntityManager EntityManager;
     public Mesh QuadMesh;
     public Mesh AsteroidMesh;
+    public Mesh SpaceshipMesh;
     public Material AsteroidMaterial;
     public Material SpaceshipMaterial;
     public Material LaserBeamMaterial;
+    public GameObject SpaceshipPrefab;
+    public static GameObject SpaceshipInstance;
 
     public const float AsteroidScale = 0.25f;
 
@@ -167,15 +170,22 @@ public class GameEngine : MonoBehaviour
 
     void InitializeSpaceship()
     {
+        SpaceshipInstance = Instantiate(SpaceshipPrefab);
+        SpaceshipInstance.transform.position = new Vector3(
+            GridDimensionFloat / 2f - 0.5f + WorldOffetValue,
+            GridDimensionFloat / 2f - 0.5f + WorldOffetValue,
+            3f);
+        SpaceshipInstance.transform.Rotate(0, 0, 0);
+
         Entity spaceship = EntityManager.CreateEntity(SpaceshipArchetype);
 
-        EntityManager.SetSharedComponentData(
-            spaceship,
-            new RenderMesh
-            {
-                mesh = QuadMesh,
-                material = SpaceshipMaterial
-            });
+        //EntityManager.SetSharedComponentData(
+        //    spaceship,
+        //    new RenderMesh
+        //    {
+        //        mesh = QuadMesh,
+        //        material = SpaceshipMaterial
+        //    });
 
         EntityManager.SetComponentData(
             spaceship,
@@ -188,7 +198,7 @@ public class GameEngine : MonoBehaviour
             });
 
         EntityManager.SetComponentData(spaceship, new Scale { Value = 0.3f });
-        EntityManager.SetComponentData(spaceship, new Rotation { Value = quaternion.RotateZ(0) });
+        EntityManager.SetComponentData(spaceship, new Rotation { Value = SpaceshipInstance.transform.rotation });
         EntityManager.SetComponentData(spaceship, new SpaceshipData { TimeToFireLaser = 0.5f });
         EntityManager.SetComponentData(spaceship, new CollisionTypeData { CollisionObjectType = CollisionTypeEnum.Player });
     }

@@ -40,6 +40,10 @@ namespace Assets.Script.Systems
 
                 UpdatePositionAndRotation(ref entity, ref playerPos, ref rotation, out float3 positionChange);
 
+                // apply the changes to the game object
+                GameEngine.SpaceshipInstance.transform.position = new Vector3(playerPos.x, playerPos.y, playerPos.z);
+                GameEngine.SpaceshipInstance.transform.rotation = rotation.Value;
+
                 spaceshipData.TimeToFireLaser -= Time.deltaTime;
                 if (spaceshipData.TimeToFireLaser < 0)
                 {
@@ -59,14 +63,15 @@ namespace Assets.Script.Systems
 
             if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow))
             {
-                float3 forwardVector = math.mul(rotation.Value, new float3(0, 1, 0));
+                // forward vector points backwards because the spaceship is by default rotate by 180 degrees on the Z axis
+                float3 forwardVector = math.mul(rotation.Value, new float3(0, -1, 0));
                 positionChange = new float3(forwardVector * Time.deltaTime * GameEngine.PlayerSpeed);
                 position += positionChange;
                 PostUpdateCommands.SetComponent(entity, new Translation { Value = position });
             }
             else if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow))
             {
-                float3 backwardVector = math.mul(rotation.Value, new float3(0, -1, 0));
+                float3 backwardVector = math.mul(rotation.Value, new float3(0, 1, 0));
                 positionChange = new float3(backwardVector * Time.deltaTime * GameEngine.PlayerSpeed);
                 position += positionChange;
                 PostUpdateCommands.SetComponent(entity, new Translation { Value = position });
@@ -78,12 +83,12 @@ namespace Assets.Script.Systems
             // when moving backwards rotation is reversed to make it more natural
             if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow))
             {
-                float rotationFactor = movingBackwards ? -GameEngine.PlayerRotationFactor : GameEngine.PlayerRotationFactor;
+                float rotationFactor = movingBackwards ? GameEngine.PlayerRotationFactor : -GameEngine.PlayerRotationFactor;
                 rotation.Value = math.mul(rotation.Value, quaternion.RotateZ(rotationFactor * Time.deltaTime));
             }
             else if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow))
             {
-                float rotationFactor = movingBackwards ? GameEngine.PlayerRotationFactor : -GameEngine.PlayerRotationFactor;
+                float rotationFactor = movingBackwards ? -GameEngine.PlayerRotationFactor : GameEngine.PlayerRotationFactor;
                 rotation.Value = math.mul(rotation.Value, quaternion.RotateZ(rotationFactor * Time.deltaTime));
             }
         }
@@ -93,7 +98,8 @@ namespace Assets.Script.Systems
         /// </summary>
         void CreateNewLaserBeam(float3 playerPosition, quaternion playerRotation)
         {
-            float3 forwardVector = math.mul(playerRotation, new float3(0, 1, 0));
+            // forward vector points backwards because the spaceship is by default rotate by 180 degrees on the Z axis
+            float3 forwardVector = math.mul(playerRotation, new float3(0, -1, 0)); 
             Entity entity = PostUpdateCommands.CreateEntity(GameEngine.LaserBeamArchetype);
 
             PostUpdateCommands.SetSharedComponent(
