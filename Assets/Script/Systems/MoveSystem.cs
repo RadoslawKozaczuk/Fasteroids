@@ -7,19 +7,18 @@ using Unity.Mathematics;
 using Unity.Transforms;
 using UnityEngine;
 
-
-namespace Assets.Script
+namespace Assets.Script.Systems
 {
-    [BurstCompile]
+    [UpdateInGroup(typeof(UpdateGroup1))]
     class MoveSystem : JobComponentSystem
     {
-        struct MoveJob : IJobForEachWithEntity<MoveSpeedData, Translation, Rotation>
+        // IJobForEach does not expose entity and job index handle but here they are not needed anyway
+        [BurstCompile]
+        struct MoveJob : IJobForEach<MoveSpeedData, Translation, Rotation>
         {
             [ReadOnly] public float DeltaTime;
 
             public void Execute(
-                [ReadOnly] Entity entity, 
-                [ReadOnly] int index, 
                 [ReadOnly] ref MoveSpeedData moveSpeed,
                 ref Translation translation,
                 ref Rotation rotation)
@@ -38,9 +37,7 @@ namespace Assets.Script
         protected override JobHandle OnUpdate(JobHandle inputDeps)
         {
             MoveJob renderJob = new MoveJob { DeltaTime = Time.deltaTime };
-            JobHandle jobHandle = renderJob.Schedule(this, inputDeps);
-
-            return jobHandle;
+            return renderJob.Schedule(this, inputDeps);
         }
     }
 }

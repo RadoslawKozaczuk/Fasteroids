@@ -5,20 +5,34 @@ using Unity.Entities;
 using Unity.Jobs;
 using UnityEngine;
 
-namespace Assets.Script
+namespace Assets.Script.Systems
 {
     /// <summary>
     /// Updates all TimeToDie data components of all entities in the World.
     /// Additionally, destroys all entities that have their TimeToDie value lower or equal zero.
     /// </summary>
-    [BurstCompile]
+    [UpdateInGroup(typeof(UpdateGroup1))]
     class TimeToDieSystem : JobComponentSystem
     {
         EndSimulationEntityCommandBufferSystem _commandBufferSystem;
+        EntityQuery _query;
 
-        protected override void OnCreate() => _commandBufferSystem = World.GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
+        protected override void OnCreate()
+        {
+            _commandBufferSystem = World.GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
 
-        struct KillJob : IJobForEachWithEntity<TimeToDie>
+            var entityQueryDesc = new EntityQueryDesc
+            {
+                All = new ComponentType[] { typeof(TimeToDie) }
+            };
+
+            _query = GetEntityQuery(entityQueryDesc);
+
+            base.OnCreate();
+        }
+
+        [BurstCompile]
+        struct TimeToDieJob : IJobForEachWithEntity<TimeToDie>
         {
             [ReadOnly] public EntityCommandBuffer.Concurrent EntityCommandBuffer;
             [ReadOnly] public float DeltaTime;
@@ -34,14 +48,14 @@ namespace Assets.Script
 
         protected override JobHandle OnUpdate(JobHandle inputDeps)
         {
-            var renderJob = new KillJob
+            var job = new TimeToDieJob
             {
                 DeltaTime = Time.deltaTime,
                 EntityCommandBuffer = _commandBufferSystem.CreateCommandBuffer().ToConcurrent()
             };
 
-            JobHandle jobHandle = renderJob.Schedule(this, inputDeps);
-            jobHandle.Complete(); // because killing happen is done in concurrent manner we have to wait until the job is done
+            JobHandle jobHandle = job.Schedule(_query, inputDeps);
+            jobHandle.Complete();
             return jobHandle;
         }
     }

@@ -9,7 +9,7 @@ using UnityEngine.UI;
 public class GameEngine : MonoBehaviour
 {
     #region Constants
-    public const float AsteroidRadius = 0.19f;
+    public const float AsteroidRadius = 0.2f;
     public const float AsteroidRadius2 = AsteroidRadius + AsteroidRadius;
     const float AsteroidTranformValueZ = 0.4f;
     const float LaserRadius = 0.07f;

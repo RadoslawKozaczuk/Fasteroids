@@ -1,138 +1,141 @@
 ﻿using Assets.Script.Components;
 using Unity.Collections;
 using Unity.Entities;
-using Unity.Jobs;
 using Unity.Mathematics;
 using Unity.Rendering;
 using Unity.Transforms;
 
-/// <summary>
-/// Collision system is using the quadrant spatial partitioning algorithm to reduce the number of collision checks.
-/// I chose this approach as it is the easiest one to implement in ECS syntax. 
-/// Overall results are outstanding because Boost Compiler provides so much power that any other algorithm 
-/// no matter how excellently written in any other non-ECS way would have been insanely slower in comparison to this anyway.
-/// 
-/// Glory to ECS!
-/// </summary>
-class CollisionSystem : JobComponentSystem
+namespace Assets.Script.Systems
 {
-    EndSimulationEntityCommandBufferSystem _commandBufferSystem;
-    EntityArchetype _asteroidRespawn;
-
-    protected override void OnCreate()
+    /// <summary>
+    /// Collision system is using the quadrant spatial partitioning algorithm to reduce the number of collision checks.
+    /// I chose this approach as it is the easiest one to implement in ECS syntax. 
+    /// Overall results are outstanding because Boost Compiler provides so much power that any other algorithm 
+    /// no matter how excellently written in any other non-ECS way would have been insanely slower in comparison to this anyway.
+    /// 
+    /// Glory to ECS!
+    /// </summary>
+    [UpdateInGroup(typeof(UpdateGroup3))]
+    class CollisionSystem : ComponentSystem
     {
-        _commandBufferSystem = World.GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
-        _asteroidRespawn = World.Active.EntityManager.CreateArchetype(typeof(TimeToRespawn));
-    }
-
-    struct FindQuadrantSystemJob : IJobForEachWithEntity<Translation, CollisionTypeData>
-    {
-        // command buffer allows us to add or remove components as well as create or destroy entities
-        [ReadOnly] public EntityCommandBuffer.Concurrent EntityCommandBuffer;
-        [ReadOnly] public EntityArchetype AsteroidRespawnArchetype;
-        [ReadOnly] public NativeMultiHashMap<int, QuadrantData> QuadrantMultiHashMap;
-
-        [ReadOnly] NativeMultiHashMapIterator<int> _nativeMultiHashMapIterator;
-
-        public void Execute(
-            [ReadOnly] Entity entity, 
-            [ReadOnly] int index, 
-            [ReadOnly] ref Translation translation, 
-            [ReadOnly] ref CollisionTypeData collisionType)
+        protected override void OnUpdate()
         {
-            int hashMapKey = QuadrantSystem.GetPositionHashMapKey(translation.Value);
-
-            // cycle through the entities in that hash map key
-            if (QuadrantMultiHashMap.TryGetFirstValue(hashMapKey, out QuadrantData quadrantData, out _nativeMultiHashMapIterator))
+            Entities
+                .WithAllReadOnly<Translation, CollisionTypeData>()
+                .WithNone<TimeToRespawn>()
+                .ForEach((Entity entity, ref Translation translation, ref CollisionTypeData collisionType) =>
             {
-                CollisionTypeEnum typeFirst = collisionType.CollisionObjectType;
-                do
+                int hashMapKey = QuadrantSystem.GetPositionHashMapKey(translation.Value);
+
+                if (CheckInQuadrant(ref entity, translation, collisionType, hashMapKey))
+                    return;
+
+                // check in neighboring quadrant if necessary
+                int xFactor = hashMapKey % QuadrantSystem.QuadrantMultiplier;
+
+                float leftBorder = xFactor * QuadrantSystem.QuadrantCellSize;
+                if (translation.Value.x - leftBorder < GameEngine.AsteroidRadius)
                 {
-                    // cycling through all the values
-                    if (entity.Index < quadrantData.Entity.Index && // to not duplicate checks
-                        // this is fast, I tried to use my own version with cheaper sqrt approximation, 
-                        // but ECS is so powerful that it is just a waste of code to be honest
-                        math.distance(
-                            new float2(translation.Value.x, translation.Value.y),
-                            new float2(quadrantData.EntityPosition.x, quadrantData.EntityPosition.y)
-                        ) < GameEngine.AsteroidRadius2)
+                    if (CheckInQuadrant(ref entity, translation, collisionType, hashMapKey - 1))
+                        return;
+                }
+
+                float rightBorder = (xFactor + 1) * QuadrantSystem.QuadrantCellSize;
+                if (translation.Value.x - leftBorder < GameEngine.AsteroidRadius)
+                {
+                    if (CheckInQuadrant(ref entity, translation, collisionType, hashMapKey + 1))
+                        return;
+                }
+            });
+        }
+
+        bool CheckInQuadrant(ref Entity entity, Translation translation, CollisionTypeData collisionType, int hashMapKey)
+        {
+            // quadrants may be empty (or precisely speaking non existent in case when no entities are within the quadrant area)
+            if(!QuadrantSystem.MultiHashMap.TryGetFirstValue(
+                hashMapKey,
+                out QuadrantData quadrantData,
+                out NativeMultiHashMapIterator<int> nativeMultiHashMapIterator))
+            {
+                return false;
+            }
+
+            CollisionTypeEnum typeFirst = collisionType.CollisionObjectType;
+
+            do
+            {
+                // cycling through all the values
+                if (entity.Index < quadrantData.Entity.Index && // to not duplicate checks as well as to avoid checking with yourself
+                    // this is fast, I tried to use my own version with cheaper sqrt approximation, 
+                    // but ECS is so powerful that it is just a waste of code to be honest
+                    math.distance(
+                        new float2(translation.Value.x, translation.Value.y),
+                        new float2(quadrantData.EntityPosition.x, quadrantData.EntityPosition.y)
+                    ) < GameEngine.AsteroidRadius2)
+                {
+                    CollisionTypeEnum typeSecond = quadrantData.CollisionTypeEnum;
+
+                    if (typeFirst == CollisionTypeEnum.Player)
                     {
-                        CollisionTypeEnum typeSecond = quadrantData.CollisionTypeEnum;
-
-                        if(typeFirst == CollisionTypeEnum.Player)
+                        if (typeSecond == CollisionTypeEnum.Asteroid)
                         {
-                            if(typeSecond == CollisionTypeEnum.Asteroid)
-                            {
-                                // "destroy" player
-                                EntityCommandBuffer.AddComponent(index, entity, new DeadData());
-                                GameEngine.DidPlayerDieThisFrame = true;
-                                EntityCommandBuffer.RemoveComponent<RenderMesh>(index, entity);
+                            // mark player as destroyed
+                            PostUpdateCommands.AddComponent(entity, new DeadData());
+                            GameEngine.DidPlayerDieThisFrame = true;
+                            PostUpdateCommands.RemoveComponent<RenderMesh>(entity);
 
-                                // destroy asteroid
-                                EntityCommandBuffer.DestroyEntity(index, quadrantData.Entity);
-                                CreateAsteroidRespawnEntity(EntityCommandBuffer, index, AsteroidRespawnArchetype);
-                            }
+                            DestroyAsteroid(ref quadrantData.Entity);
+
+                            return true;
                         }
-                        else if(typeFirst == CollisionTypeEnum.Laser)
+                    }
+                    else if (typeFirst == CollisionTypeEnum.Laser)
+                    {
+                        if (typeSecond == CollisionTypeEnum.Asteroid)
                         {
-                            if (typeSecond == CollisionTypeEnum.Asteroid)
-                            {
-                                GameEngine.PlayerScore++;
+                            GameEngine.PlayerScore++;
+                            PostUpdateCommands.DestroyEntity(entity);
+                            DestroyAsteroid(ref quadrantData.Entity);
 
-                                EntityCommandBuffer.DestroyEntity(index, entity);
-                                EntityCommandBuffer.DestroyEntity(index, quadrantData.Entity);
-                                CreateAsteroidRespawnEntity(EntityCommandBuffer, index, AsteroidRespawnArchetype);
-                            }
+                            return true;
                         }
-                        else if(typeFirst == CollisionTypeEnum.Asteroid)
-                        {
-                            EntityCommandBuffer.DestroyEntity(index, entity);
-                            CreateAsteroidRespawnEntity(EntityCommandBuffer, index, AsteroidRespawnArchetype);
+                    }
+                    else if (typeFirst == CollisionTypeEnum.Asteroid)
+                    {
+                        DestroyAsteroid(ref entity);
 
-                            if (typeSecond == CollisionTypeEnum.Asteroid)
-                            {
-                                EntityCommandBuffer.DestroyEntity(index, quadrantData.Entity);
-                                CreateAsteroidRespawnEntity(EntityCommandBuffer, index, AsteroidRespawnArchetype);
-                            }
-                            else if(typeSecond == CollisionTypeEnum.Laser)
-                            {
-                                GameEngine.PlayerScore++;
-                                EntityCommandBuffer.DestroyEntity(index, quadrantData.Entity);
-                            }
-                            else if(typeSecond == CollisionTypeEnum.Player)
-                            {
-                                // "destroy" player
-                                EntityCommandBuffer.AddComponent(index, quadrantData.Entity, new DeadData());
-                                GameEngine.DidPlayerDieThisFrame = true;
-                                EntityCommandBuffer.RemoveComponent<RenderMesh>(index, quadrantData.Entity);
-                            }
+                        if (typeSecond == CollisionTypeEnum.Asteroid)
+                        {
+                            DestroyAsteroid(ref quadrantData.Entity);
+                        }
+                        else if (typeSecond == CollisionTypeEnum.Laser)
+                        {
+                            GameEngine.PlayerScore++;
+                            PostUpdateCommands.DestroyEntity(quadrantData.Entity);
+                        }
+                        else if (typeSecond == CollisionTypeEnum.Player)
+                        {
+                            // mark player as destroyed
+                            PostUpdateCommands.AddComponent(quadrantData.Entity, new DeadData());
+                            GameEngine.DidPlayerDieThisFrame = true;
+                            PostUpdateCommands.RemoveComponent<RenderMesh>(quadrantData.Entity);
                         }
 
-                        break;
+                        return true;
                     }
                 }
-                while (QuadrantMultiHashMap.TryGetNextValue(out quadrantData, ref _nativeMultiHashMapIterator));
             }
+            while (QuadrantSystem.MultiHashMap.TryGetNextValue(out quadrantData, ref nativeMultiHashMapIterator));
+
+            return false;
         }
-    }
 
-    static void CreateAsteroidRespawnEntity(EntityCommandBuffer.Concurrent entityCommandBuffer, int index, EntityArchetype respawn)
-    {
-        entityCommandBuffer.SetComponent(
-            index,
-            entityCommandBuffer.CreateEntity(index, respawn),
-            new TimeToRespawn() { Time = 1f });
-    }
-
-    protected override JobHandle OnUpdate(JobHandle inputDeps)
-    {
-        var findQuadrantSystemJob = new FindQuadrantSystemJob
+        void DestroyAsteroid(ref Entity entity)
         {
-            EntityCommandBuffer = _commandBufferSystem.CreateCommandBuffer().ToConcurrent(),
-            AsteroidRespawnArchetype = _asteroidRespawn,
-            QuadrantMultiHashMap = QuadrantSystem.MultiHashMap,
-        };
-
-        return findQuadrantSystemJob.Schedule(this, inputDeps);
+            // for some reason this is sometimes called twice - it does not break the game as ECS filters out duplicated commands
+            // but it is hard to me to even understand where this problem comes from to begin with
+            PostUpdateCommands.AddComponent(entity, new TimeToRespawn() { Time = 1f });
+            PostUpdateCommands.RemoveComponent<RenderMesh>(entity);
+        }
     }
 }

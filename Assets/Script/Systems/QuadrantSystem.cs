@@ -6,74 +6,81 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using Unity.Transforms;
 
-public struct QuadrantData
+namespace Assets.Script.Systems
 {
-    public Entity Entity;
-    public float3 EntityPosition;
-    public CollisionTypeEnum CollisionTypeEnum;
-}
-
-class QuadrantSystem : ComponentSystem
-{
-    const int QuadrantMultiplier = 10_000; // how many quadrants we can have per row
-    const int QuadrantCellSize = 4;
-
-    public static NativeMultiHashMap<int, QuadrantData> MultiHashMap;
-
-    public static int GetPositionHashMapKey(float3 position) 
-        => (int)(math.floor(position.x / QuadrantCellSize) + (QuadrantMultiplier * math.floor(position.y / QuadrantCellSize)));
-
-    [BurstCompile]
-    struct SetQuadrantHashMapDataJob : IJobForEachWithEntity<Translation, CollisionTypeData>
+    [UpdateInGroup(typeof(UpdateGroup2))]
+    class QuadrantSystem : ComponentSystem
     {
-        public NativeMultiHashMap<int, QuadrantData>.Concurrent NativeMultiHashMap;
+        public static NativeMultiHashMap<int, QuadrantData> MultiHashMap;
 
-        public void Execute(
-            [ReadOnly] Entity entity, 
-            [ReadOnly] int index, 
-            [ReadOnly] ref Translation translation,
-            [ReadOnly] ref CollisionTypeData collisionType)
+        public const int QuadrantMultiplier = 10_000; // how many quadrants we can have per row
+        public const int QuadrantCellSize = 4;
+
+        EntityQuery _query;
+
+        public static int GetPositionHashMapKey(float3 position)
+            => (int)(math.floor(position.x / QuadrantCellSize) + (QuadrantMultiplier * math.floor(position.y / QuadrantCellSize)));
+
+        [BurstCompile]
+        struct SetQuadrantHashMapDataJob : IJobForEachWithEntity<Translation, CollisionTypeData>
         {
-            int hashMapKey = GetPositionHashMapKey(translation.Value);
-            NativeMultiHashMap.Add(
-                hashMapKey, 
-                new QuadrantData
-                {
-                    Entity = entity,
-                    EntityPosition = translation.Value,
-                    CollisionTypeEnum = collisionType.CollisionObjectType
-                });
+            public NativeMultiHashMap<int, QuadrantData>.Concurrent NativeMultiHashMap;
+
+            public void Execute(
+                [ReadOnly] Entity entity,
+                [ReadOnly] int index,
+                [ReadOnly] ref Translation translation,
+                [ReadOnly] ref CollisionTypeData collisionType)
+            {
+                int hashMapKey = GetPositionHashMapKey(translation.Value);
+                NativeMultiHashMap.Add(
+                    hashMapKey,
+                    new QuadrantData
+                    {
+                        Entity = entity,
+                        EntityPosition = translation.Value,
+                        CollisionTypeEnum = collisionType.CollisionObjectType
+                    });
+            }
         }
-    }
 
-    protected override void OnCreate()
-    {
-        MultiHashMap = new NativeMultiHashMap<int, QuadrantData>(0, Allocator.Persistent);
-        base.OnCreate();
-    }
+        protected override void OnCreate()
+        {
+            var entityQueryDesc = new EntityQueryDesc
+            {
+                None = new ComponentType[] { typeof(DeadData), typeof(TimeToRespawn) },
+                All = new ComponentType[] { ComponentType.ReadOnly<CollisionTypeData>(), ComponentType.ReadOnly<Translation>() }
+            };
 
-    protected override void OnDestroy()
-    {
-        MultiHashMap.Dispose();
-        base.OnDestroy();
-    }
+            _query = GetEntityQuery(entityQueryDesc);
 
-    protected override void OnUpdate()
-    {
-        EntityQuery entityQuery = GetEntityQuery(
-            typeof(Translation),
-            typeof(CollisionTypeData));
+            MultiHashMap = new NativeMultiHashMap<int, QuadrantData>(0, Allocator.Persistent);
+            base.OnCreate();
+        }
 
-        MultiHashMap.Clear(); // need to be cleared because it is persistent
+        protected override void OnDestroy()
+        {
+            MultiHashMap.Dispose();
+            base.OnDestroy();
+        }
 
-        // adjust its size to match the current needs
-        int entityNumber = entityQuery.CalculateLength();
-        if (entityNumber > MultiHashMap.Capacity)
-            MultiHashMap.Capacity = entityNumber;
+        protected override void OnUpdate()
+        {
+            MultiHashMap.Clear(); // need to be cleared because it is persistent
 
-        var setQuadrantDataHashMapJob = new SetQuadrantHashMapDataJob { NativeMultiHashMap = MultiHashMap.ToConcurrent() };
+            // adjust its size to match the current needs
+            //int entityNumber = entityQuery.CalculateLength();
+            int entityNumber = _query.CalculateLength();
+            if (entityNumber > MultiHashMap.Capacity)
+                MultiHashMap.Capacity = entityNumber;
 
-        JobHandle jobHandle = JobForEachExtensions.Schedule(setQuadrantDataHashMapJob, entityQuery);
-        jobHandle.Complete();
+            var setQuadrantDataHashMapJob = new SetQuadrantHashMapDataJob
+            {
+                NativeMultiHashMap = MultiHashMap.ToConcurrent()
+            };
+
+            JobHandle jobHandle = JobForEachExtensions.Schedule(setQuadrantDataHashMapJob, _query);
+            jobHandle.Complete();
+        }
     }
 }
