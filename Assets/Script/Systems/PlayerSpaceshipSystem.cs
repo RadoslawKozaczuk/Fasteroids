@@ -53,7 +53,7 @@ namespace Assets.Script.Systems
 
                 CameraFollow(playerPos);
 
-                RotateSkybox(new Vector3(-positionChange.y / 2, positionChange.x / 2));
+                RotateSkybox(new Vector3(-positionChange.y * 1.5f, positionChange.x * 1.5f)); // skybox must rotate pretty fast so the player can see it
             });
         }
 

@@ -179,13 +179,12 @@ public class GameEngine : MonoBehaviour
 
         Entity spaceship = EntityManager.CreateEntity(SpaceshipArchetype);
 
-        //EntityManager.SetSharedComponentData(
-        //    spaceship,
-        //    new RenderMesh
-        //    {
-        //        mesh = QuadMesh,
-        //        material = SpaceshipMaterial
-        //    });
+        //var color = SpaceshipMaterial.color;
+        //color.r += 0.1f;
+        //color.g += 0.1f;
+        //color.b += 0.1f;
+
+        //SpaceshipMaterial.color = new Color(color.r, color.g, color.b); // I will make it lighter
 
         EntityManager.SetComponentData(
             spaceship,
