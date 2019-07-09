@@ -4,7 +4,7 @@ using Unity.Mathematics;
 using Unity.Rendering;
 using Unity.Transforms;
 using UnityEngine;
-using static GameEngine;
+using static Assets.Scripts.GameEngine;
 
 namespace Assets.Scripts.Systems
 {
@@ -61,9 +61,9 @@ namespace Assets.Scripts.Systems
                             DirectionY = UnityEngine.Random.Range(-1f, 1f),
                             MoveSpeed = UnityEngine.Random.Range(0.05f, 0.2f),
                             RotationSpeed = new float3(
-                                    UnityEngine.Random.Range(0f, 1f),
-                                    UnityEngine.Random.Range(0f, 1f),
-                                    UnityEngine.Random.Range(0f, 1f))
+                                UnityEngine.Random.Range(0f, 1f),
+                                UnityEngine.Random.Range(0f, 1f),
+                                UnityEngine.Random.Range(0f, 1f))
                         });
 
                     PostUpdateCommands.SetComponent(entity, new Rotation { Value = UnityEngine.Random.rotation });
