@@ -23,7 +23,7 @@ namespace Assets.Script.Systems
 
             var entityQueryDesc = new EntityQueryDesc
             {
-                All = new ComponentType[] { typeof(TimeToDie) }
+                All = new ComponentType[] { typeof(TimeToDieData) }
             };
 
             _query = GetEntityQuery(entityQueryDesc);
@@ -32,12 +32,12 @@ namespace Assets.Script.Systems
         }
 
         [BurstCompile]
-        struct TimeToDieJob : IJobForEachWithEntity<TimeToDie>
+        struct TimeToDieJob : IJobForEachWithEntity<TimeToDieData>
         {
             [ReadOnly] public EntityCommandBuffer.Concurrent EntityCommandBuffer;
             [ReadOnly] public float DeltaTime;
 
-            public void Execute([ReadOnly] Entity entity, [ReadOnly] int index, ref TimeToDie timeToDie)
+            public void Execute([ReadOnly] Entity entity, [ReadOnly] int index, ref TimeToDieData timeToDie)
             {
                 timeToDie.Time -= DeltaTime;
 

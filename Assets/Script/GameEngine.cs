@@ -12,17 +12,18 @@ public class GameEngine : MonoBehaviour
     public const float AsteroidRadius = 0.2f;
     public const float AsteroidRadius2 = AsteroidRadius + AsteroidRadius;
     const float AsteroidTranformValueZ = 0.4f;
-    const float LaserRadius = 0.07f;
+    public const float LaserRadius = 0.07f;
     public const float LaserSpeed = 2.5f;
+    public const float LaserFireFrequency = 0.5f;
     public const float LaserLiveLength = 2f;
 
     const float AsteroidSpeedMin = 0.009f; // distance traveled per frame
     const float AsteroidSpeedMax = 0.02f; // distance traveled per frame
-    public const int GridDimensionInt = 100;
-    public const float GridDimensionFloat = 100;
+    public const int GridDimensionInt = 200;
+    public const float GridDimensionFloat = 200;
     const int TotalNumberOfAsteroids = GridDimensionInt * GridDimensionInt;
 
-    const float PlayerRadius = 0.08f;
+    public const float PlayerRadius = 0.2f;
     public const float PlayerRotationFactor = 3f;
     public const float PlayerSpeed = 1.25f;
 
@@ -31,8 +32,8 @@ public class GameEngine : MonoBehaviour
 
     public const float WorldOffetValue = 1000f; // we move world top right to be sure we operate on positive numbers
 
-    public const float FrustumSizeX = 3.8f;
-    public const float FrustumSizeY = 2.3f;
+    public const float FrustumSizeX = 6f;
+    public const float FrustumSizeY = 4f;
     #endregion
 
     public static GameEngine Instance { get; private set; }
@@ -72,6 +73,12 @@ public class GameEngine : MonoBehaviour
     public static EntityArchetype AsteroidArchetype;
     public static EntityArchetype LaserBeamArchetype;
     public static EntityArchetype SpaceshipArchetype;
+
+    // === DEBUG DRAW ===
+    [Space]
+    [Header("Debug options (slows down the game!)")]
+    public bool DrawCollisionQuadrants;
+    public bool DrawEntityCollisionBorders;
 
     void Awake() => Instance = this;
 
@@ -120,7 +127,7 @@ public class GameEngine : MonoBehaviour
             typeof(MoveSpeedData),
             typeof(Rotation),
             typeof(CollisionTypeData),
-            typeof(TimeToDie));
+            typeof(TimeToDieData));
 
         SpaceshipArchetype = EntityManager.CreateArchetype(
             typeof(RenderMesh),
@@ -137,35 +144,38 @@ public class GameEngine : MonoBehaviour
     {
         for (int x = (int)WorldOffetValue; x < GridDimensionInt + WorldOffetValue; x++)
             for (int y = (int)WorldOffetValue; y < GridDimensionInt + WorldOffetValue; y++)
+                SpawnAsteroid(x, y);
+    }
+
+    void SpawnAsteroid(float posX, float posY)
+    {
+        Entity entity = EntityManager.CreateEntity(AsteroidArchetype);
+        EntityManager.SetSharedComponentData(
+            entity,
+            new RenderMesh
             {
-                Entity entity = EntityManager.CreateEntity(AsteroidArchetype);
-                EntityManager.SetSharedComponentData(
-                    entity,
-                    new RenderMesh
-                    {
-                        mesh = AsteroidMesh,
-                        material = AsteroidMaterial
-                    });
+                mesh = AsteroidMesh,
+                material = AsteroidMaterial
+            });
 
-                EntityManager.SetComponentData(entity, new Translation { Value = new float3(x, y, 3f) });
-                EntityManager.SetComponentData(entity, new Scale { Value = AsteroidScale });
+        EntityManager.SetComponentData(entity, new Translation { Value = new float3(posX, posY, 3f) });
+        EntityManager.SetComponentData(entity, new Scale { Value = AsteroidScale });
 
-                EntityManager.SetComponentData(
-                    entity,
-                    new MoveSpeedData
-                    {
-                        DirectionX = UnityEngine.Random.Range(-1f, 1f),
-                        DirectionY = UnityEngine.Random.Range(-1f, 1f),
-                        MoveSpeed = UnityEngine.Random.Range(0.05f, 0.2f),
-                        RotationSpeed = new float3(
-                            UnityEngine.Random.Range(0f, 1f),
-                            UnityEngine.Random.Range(0f, 1f),
-                            UnityEngine.Random.Range(0f, 1f))
-                    });
+        EntityManager.SetComponentData(
+            entity,
+            new MoveSpeedData
+            {
+                DirectionX = UnityEngine.Random.Range(-1f, 1f),
+                DirectionY = UnityEngine.Random.Range(-1f, 1f),
+                MoveSpeed = UnityEngine.Random.Range(0.05f, 0.2f),
+                RotationSpeed = new float3(
+                    UnityEngine.Random.Range(0f, 1f),
+                    UnityEngine.Random.Range(0f, 1f),
+                    UnityEngine.Random.Range(0f, 1f))
+            });
 
-                EntityManager.SetComponentData(entity, new CollisionTypeData { CollisionObjectType = CollisionTypeEnum.Asteroid });
-                EntityManager.SetComponentData(entity, new Rotation { Value = UnityEngine.Random.rotation });
-            }
+        EntityManager.SetComponentData(entity, new CollisionTypeData { CollisionObjectType = CollisionType.Asteroid });
+        EntityManager.SetComponentData(entity, new Rotation { Value = UnityEngine.Random.rotation });
     }
 
     void InitializeSpaceship()
@@ -199,7 +209,7 @@ public class GameEngine : MonoBehaviour
         EntityManager.SetComponentData(spaceship, new Scale { Value = 0.3f });
         EntityManager.SetComponentData(spaceship, new Rotation { Value = SpaceshipInstance.transform.rotation });
         EntityManager.SetComponentData(spaceship, new SpaceshipData { TimeToFireLaser = 0.5f });
-        EntityManager.SetComponentData(spaceship, new CollisionTypeData { CollisionObjectType = CollisionTypeEnum.Player });
+        EntityManager.SetComponentData(spaceship, new CollisionTypeData { CollisionObjectType = CollisionType.Player });
     }
 
     void HandleInput()

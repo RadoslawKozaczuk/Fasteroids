@@ -7,6 +7,6 @@ namespace Assets.Script.Components
     {
         public Entity Entity;
         public float3 EntityPosition;
-        public CollisionTypeEnum CollisionTypeEnum;
+        public CollisionType CollisionTypeEnum;
     }
 }

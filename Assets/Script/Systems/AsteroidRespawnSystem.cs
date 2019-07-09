@@ -21,7 +21,7 @@ namespace Assets.Script.Systems
                 ComponentType.ReadOnly<Rotation>(),
                 ComponentType.ReadOnly<SpaceshipData>());
 
-            _respawingQuery = GetEntityQuery(ComponentType.ReadOnly<TimeToRespawn>());
+            _respawingQuery = GetEntityQuery(ComponentType.ReadOnly<TimeToRespawnData>());
         }
 
         protected override void OnUpdate()
@@ -32,13 +32,13 @@ namespace Assets.Script.Systems
             Entities.With(_playerQuery).ForEach((Entity entity, ref Translation translation)
                 => playerPosition = translation.Value);
 
-            Entities.With(_respawingQuery).ForEach((Entity entity, ref TimeToRespawn timeToRespawn) =>
+            Entities.With(_respawingQuery).ForEach((Entity entity, ref TimeToRespawnData timeToRespawn) =>
             {
                 timeToRespawn.Time -= Time.deltaTime;
 
                 if (timeToRespawn.Time <= 0)
                 {
-                    PostUpdateCommands.RemoveComponent(entity, typeof(TimeToRespawn));
+                    PostUpdateCommands.RemoveComponent(entity, typeof(TimeToRespawnData));
      
                     float3 spawnLocation = new float3(FindSpawningLocation(playerPosition), 3f);
 

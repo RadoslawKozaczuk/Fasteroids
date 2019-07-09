@@ -1,25 +1,33 @@
 ﻿using Assets.Script.Components;
+using Assets.Script.Systems;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
 using Unity.Transforms;
+using UnityEngine;
 
-namespace Assets.Script.Systems
+namespace Assets.Scripts.Systems
 {
     [UpdateInGroup(typeof(UpdateGroup2))]
     class QuadrantSystem : ComponentSystem
     {
         public static NativeMultiHashMap<int, QuadrantData> MultiHashMap;
 
-        public const int QuadrantMultiplier = 10_000; // how many quadrants we can have per row
-        public const int QuadrantCellSize = 4;
+        public const int QuadrantMultiplier = 10_000; // y coordinates are stored in millions while x are stored in units
+        public const int QuadrantCellSize = 2;
 
         EntityQuery _query;
 
         public static int GetPositionHashMapKey(float3 position)
             => (int)(math.floor(position.x / QuadrantCellSize) + (QuadrantMultiplier * math.floor(position.y / QuadrantCellSize)));
+
+        public static void RetrieveComponentsFromHashMapKey(int hashMapKey, out int xComponent, out int yComponent)
+        {
+            xComponent = hashMapKey % QuadrantMultiplier;
+            yComponent = (hashMapKey - xComponent) / QuadrantMultiplier;
+        }
 
         [BurstCompile]
         struct SetQuadrantHashMapDataJob : IJobForEachWithEntity<Translation, CollisionTypeData>
@@ -48,7 +56,7 @@ namespace Assets.Script.Systems
         {
             var entityQueryDesc = new EntityQueryDesc
             {
-                None = new ComponentType[] { typeof(DeadData), typeof(TimeToRespawn) },
+                None = new ComponentType[] { typeof(DeadData), typeof(TimeToRespawnData) },
                 All = new ComponentType[] { ComponentType.ReadOnly<CollisionTypeData>(), ComponentType.ReadOnly<Translation>() }
             };
 
@@ -64,12 +72,25 @@ namespace Assets.Script.Systems
             base.OnDestroy();
         }
 
+        static int GetEntityCountInHashMap(NativeMultiHashMap<int, QuadrantData> hashMap, int hashKey)
+        {
+            int count = 0;
+            if (hashMap.TryGetFirstValue(hashKey, out _, out NativeMultiHashMapIterator<int> nativeMultiHashMapIterator))
+            {
+                do
+                {
+                    count++;
+                } while (hashMap.TryGetNextValue(out _, ref nativeMultiHashMapIterator));
+            }
+
+            return count;
+        }
+
         protected override void OnUpdate()
         {
             MultiHashMap.Clear(); // need to be cleared because it is persistent
 
             // adjust its size to match the current needs
-            //int entityNumber = entityQuery.CalculateLength();
             int entityNumber = _query.CalculateLength();
             if (entityNumber > MultiHashMap.Capacity)
                 MultiHashMap.Capacity = entityNumber;
@@ -81,6 +102,19 @@ namespace Assets.Script.Systems
 
             JobHandle jobHandle = JobForEachExtensions.Schedule(setQuadrantDataHashMapJob, _query);
             jobHandle.Complete();
+
+            // === DEBUG DRAW ===
+            // draw quadrants around the player's 
+            if (Debug.isDebugBuild && GameEngine.Instance.DrawCollisionQuadrants)
+            {
+                float posX = GameEngine.SpaceshipInstance.transform.position.x;
+                float posY = GameEngine.SpaceshipInstance.transform.position.y;
+                for (int i = -1; i <= 1; i++)
+                    for (int y = -1; y <= 1; y++)
+                        DebugDrawMethods.DebugDrawQuadrant(posX + i * QuadrantCellSize, posY + y * QuadrantCellSize, Color.yellow);
+
+                Debug.Log(GetEntityCountInHashMap(MultiHashMap, GetPositionHashMapKey(Utils.GetMouseWorldPosition())));
+            }
         }
     }
 }

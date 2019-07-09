@@ -48,7 +48,7 @@ namespace Assets.Script.Systems
                 if (spaceshipData.TimeToFireLaser < 0)
                 {
                     CreateNewLaserBeam(playerPos, rotation.Value);
-                    spaceshipData.TimeToFireLaser = 0.5f;
+                    spaceshipData.TimeToFireLaser = GameEngine.LaserFireFrequency;
                 }
 
                 CameraFollow(playerPos);
@@ -99,7 +99,7 @@ namespace Assets.Script.Systems
         void CreateNewLaserBeam(float3 playerPosition, quaternion playerRotation)
         {
             // forward vector points backwards because the spaceship is by default rotate by 180 degrees on the Z axis
-            float3 forwardVector = math.mul(playerRotation, new float3(0, -1, 0)); 
+            float3 forwardVector = math.mul(playerRotation, new float3(0, -1, 0));
             Entity entity = PostUpdateCommands.CreateEntity(GameEngine.LaserBeamArchetype);
 
             PostUpdateCommands.SetSharedComponent(
@@ -127,9 +127,9 @@ namespace Assets.Script.Systems
 
             PostUpdateCommands.SetComponent(
                 entity,
-                new CollisionTypeData { CollisionObjectType = CollisionTypeEnum.Laser });
+                new CollisionTypeData { CollisionObjectType = CollisionType.Laser });
 
-            PostUpdateCommands.SetComponent(entity, new TimeToDie { Time = GameEngine.LaserLiveLength });
+            PostUpdateCommands.SetComponent(entity, new TimeToDieData { Time = GameEngine.LaserLiveLength });
         }
 
         void CameraFollow(float3 playerPosition)
