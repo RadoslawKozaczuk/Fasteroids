@@ -1,5 +1,4 @@
-﻿using Assets.Script.Components;
-using Assets.Script.Systems;
+﻿using Assets.Scripts.Components;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;

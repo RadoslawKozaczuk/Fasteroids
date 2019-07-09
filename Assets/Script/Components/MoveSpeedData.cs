@@ -1,7 +1,7 @@
 ﻿using Unity.Entities;
 using Unity.Mathematics;
 
-namespace Assets.Script.Components
+namespace Assets.Scripts.Components
 {
     public struct MoveSpeedData : IComponentData
     {

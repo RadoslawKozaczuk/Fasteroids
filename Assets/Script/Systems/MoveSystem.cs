@@ -1,4 +1,4 @@
-﻿using Assets.Script.Components;
+﻿using Assets.Scripts.Components;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
@@ -7,7 +7,7 @@ using Unity.Mathematics;
 using Unity.Transforms;
 using UnityEngine;
 
-namespace Assets.Script.Systems
+namespace Assets.Scripts.Systems
 {
     [UpdateInGroup(typeof(UpdateGroup1))]
     class MoveSystem : JobComponentSystem

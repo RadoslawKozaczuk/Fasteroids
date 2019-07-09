@@ -1,6 +1,6 @@
 ﻿using Unity.Entities;
 
-namespace Assets.Script.Components
+namespace Assets.Scripts.Components
 {
     public struct DeadData : IComponentData { }
 }

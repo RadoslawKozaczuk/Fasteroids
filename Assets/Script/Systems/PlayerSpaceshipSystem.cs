@@ -1,11 +1,11 @@
-﻿using Assets.Script.Components;
+﻿using Assets.Scripts.Components;
 using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Rendering;
 using Unity.Transforms;
 using UnityEngine;
 
-namespace Assets.Script.Systems
+namespace Assets.Scripts.Systems
 {
     [UpdateInGroup(typeof(UpdateGroup1))]
     public class PlayerSpaceshipSystem : ComponentSystem

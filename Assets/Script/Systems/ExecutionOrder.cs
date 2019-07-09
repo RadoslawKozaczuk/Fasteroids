@@ -1,6 +1,6 @@
 ﻿using Unity.Entities;
 
-namespace Assets.Script.Systems
+namespace Assets.Scripts.Systems
 {
     public class UpdateGroup1 : ComponentSystemGroup { } // executes first
     public class UpdateGroup2 : ComponentSystemGroup { }
