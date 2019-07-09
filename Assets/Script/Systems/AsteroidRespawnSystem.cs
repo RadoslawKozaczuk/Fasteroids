@@ -39,7 +39,7 @@ namespace Assets.Scripts.Systems
                 if (timeToRespawn.Time <= 0)
                 {
                     PostUpdateCommands.RemoveComponent(entity, typeof(TimeToRespawnData));
-     
+
                     float3 spawnLocation = new float3(FindSpawningLocation(playerPosition), 3f);
 
                     PostUpdateCommands.AddSharedComponent(

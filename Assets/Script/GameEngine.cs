@@ -21,8 +21,8 @@ namespace Assets.Scripts
 
         const float AsteroidSpeedMin = 0.009f; // distance traveled per frame
         const float AsteroidSpeedMax = 0.02f; // distance traveled per frame
-        public const int GridDimensionInt = 200;
-        public const float GridDimensionFloat = 200;
+        public const int GridDimensionInt = 40;
+        public const float GridDimensionFloat = 40;
         const int TotalNumberOfAsteroids = GridDimensionInt * GridDimensionInt;
 
         public const float PlayerRadius = 0.2f;
@@ -119,6 +119,7 @@ namespace Assets.Scripts
                 typeof(Scale), // uniform scale
                 typeof(MoveSpeedData),
                 typeof(Rotation),
+                typeof(AsteroidData),
                 typeof(CollisionTypeData));
 
             LaserBeamArchetype = EntityManager.CreateArchetype(
@@ -132,8 +133,6 @@ namespace Assets.Scripts
                 typeof(TimeToDieData));
 
             SpaceshipArchetype = EntityManager.CreateArchetype(
-                typeof(RenderMesh),
-                typeof(LocalToWorld), // how the mesh should be displayed (mandatory in order to be displayed)
                 typeof(Translation), // equivalent of position
                 typeof(Scale), // uniform scale
                 typeof(Rotation),
@@ -191,13 +190,6 @@ namespace Assets.Scripts
 
             Entity spaceship = EntityManager.CreateEntity(SpaceshipArchetype);
 
-            //var color = SpaceshipMaterial.color;
-            //color.r += 0.1f;
-            //color.g += 0.1f;
-            //color.b += 0.1f;
-
-            //SpaceshipMaterial.color = new Color(color.r, color.g, color.b); // I will make it lighter
-
             EntityManager.SetComponentData(
                 spaceship,
                 new Translation
@@ -222,6 +214,7 @@ namespace Assets.Scripts
 
         void GameOver()
         {
+            SpaceshipInstance.gameObject.SetActive(false);
             _restartButton.gameObject.SetActive(true);
             _youLoseLabel.gameObject.SetActive(true);
         }
@@ -233,6 +226,7 @@ namespace Assets.Scripts
             PlayerScore = 0;
             _playerScoreLabel.text = "score: 0";
 
+            SpaceshipInstance.gameObject.SetActive(true);
             _restartButton.gameObject.SetActive(false);
             _youLoseLabel.gameObject.SetActive(false);
         }

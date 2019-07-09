@@ -128,11 +128,8 @@ namespace Assets.Scripts.Systems
                     {
                         if (typeSecond == CollisionType.Asteroid)
                         {
-                            // mark player as destroyed
-                            PostUpdateCommands.AddComponent(entity, new DeadData());
+                            PostUpdateCommands.DestroyEntity(entity);
                             GameEngine.DidPlayerDieThisFrame = true;
-                            PostUpdateCommands.RemoveComponent<RenderMesh>(entity);
-
                             DestroyAsteroid(ref quadrantData.Entity);
 
                             return true;
@@ -164,10 +161,8 @@ namespace Assets.Scripts.Systems
                         }
                         else if (typeSecond == CollisionType.Player)
                         {
-                            // mark player as destroyed
-                            PostUpdateCommands.AddComponent(quadrantData.Entity, new DeadData());
                             GameEngine.DidPlayerDieThisFrame = true;
-                            PostUpdateCommands.RemoveComponent<RenderMesh>(quadrantData.Entity);
+                            PostUpdateCommands.DestroyEntity(quadrantData.Entity);
                         }
 
                         return true;
