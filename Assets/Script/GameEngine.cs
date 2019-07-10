@@ -21,8 +21,8 @@ namespace Assets.Scripts
 
         const float AsteroidSpeedMin = 0.009f; // distance traveled per frame
         const float AsteroidSpeedMax = 0.02f; // distance traveled per frame
-        public const int GridDimensionInt = 40;
-        public const float GridDimensionFloat = 40;
+        public const int GridDimensionInt = 120;
+        public const float GridDimensionFloat = 120;
         const int TotalNumberOfAsteroids = GridDimensionInt * GridDimensionInt;
 
         public const float PlayerRadius = 0.2f;
